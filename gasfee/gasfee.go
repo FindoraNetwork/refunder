@@ -19,7 +19,6 @@ type Service struct {
 	client       *ethclient.Client
 	wp           *workerpool.WorkerPool
 	done         chan struct{}
-	contractAddr string
 	stdoutlogger *log.Logger
 	stderrlogger *log.Logger
 }
