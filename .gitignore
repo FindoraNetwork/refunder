@@ -16,3 +16,6 @@ vendor/
 
 # Coverage file
 *.cov
+
+# Config file
+*.json
