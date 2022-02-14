@@ -1,17 +1,14 @@
 package main
 
 import (
-	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/FindoraNetwork/refunder/client"
 	"github.com/FindoraNetwork/refunder/config"
 	"github.com/FindoraNetwork/refunder/gasfee"
-
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 const help = `
@@ -32,18 +29,7 @@ func main() {
 		log.Fatalf("readConfig failed: %v", err)
 	}
 
-	dialTimeout, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(config.Server.ServerDialTimeoutSec)*time.Second,
-	)
-	defer cancel()
-
-	// ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546
-	// only works on sentry node
-	client, err := ethclient.DialContext(dialTimeout, config.Server.ServerWSAddr)
-	if err != nil {
-		log.Fatalf("ethclient.Dial failed: %v, config: %v", err, config)
-	}
+	client := client.New(config.Server)
 
 	gasfeeSvc, err := gasfee.New(client, config.GasFeeService)
 	if err != nil {

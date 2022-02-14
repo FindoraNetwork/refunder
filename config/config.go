@@ -16,19 +16,23 @@ type Server struct {
 	// a timeout second while dialing to server do a websocket connection
 	ServerDialTimeoutSec uint `json:"server_dial_timeout_sec"`
 	// the websocket server address with port number
-	ServerWSAddr string `json:"server_ws_addr"`
+	ServerWSAddress string `json:"server_ws_address"`
 }
 
 type GasFeeService struct {
-	WorkerPoolSize      int `json:"worker_pool_size"`
-	WorkerPoolWorkerNum int `json:"worker_pool_worker_num"`
+	PrivateKey                  string `json:"private_key"`
+	HandlerOperationsTimeoutSec uint   `json:"handler_operations_timeout_sec"`
+	SubscripTimeoutSec          uint   `json:"subscrip_timeout_sec"`
+	EventLogPoolSize            int    `json:"event_log_pool_size"`
+	WorkerPoolSize              int    `json:"worker_pool_size"`
+	WorkerPoolWorkerNum         int    `json:"worker_pool_worker_num"`
 	// Token address mapping to itself GasFeeRefundAmount
-	RefundAmounts map[string]GasFeeRefundAmount `json:"refund_amounts"`
+	RefundAmounts map[string]*GasFeeRefundAmount `json:"refund_amounts"`
 }
 
 type GasFeeRefundAmount struct {
-	Threshold uint `json:"threshold"`
-	Refund    uint `json:"refund"`
+	Threshold int64 `json:"threshold"`
+	Refund    int64 `json:"refund"`
 }
 
 func Load(cmd, filepath string) (*Config, error) {
