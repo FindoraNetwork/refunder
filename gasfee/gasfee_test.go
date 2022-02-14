@@ -69,7 +69,10 @@ func setup(t *testing.T) (client.Client, string) {
 		t.Fatal(err)
 	}
 
-	auth := bind.NewKeyedTransactor(priv)
+	auth, err := bind.NewKeyedTransactorWithChainID(priv, big.NewInt(1337))
+	if err != nil {
+		t.Fatal(err)
+	}
 	balance := new(big.Int)
 	balance.SetString("10000000000000000000", 10) // 10 token in wei
 	address := auth.From
