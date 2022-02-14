@@ -12,7 +12,7 @@ import (
 func Test_Client(t *testing.T) {
 	c := client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddr:         "ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546",
+		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546",
 	})
 
 	_, err := c.Dial()
@@ -20,7 +20,7 @@ func Test_Client(t *testing.T) {
 
 	c = client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddr:         "not-exists-address",
+		ServerWSAddress:      "not-exists-address",
 	})
 
 	_, err = c.Dial()

@@ -25,6 +25,7 @@ type setting struct {
 	refundThreshold *big.Int
 }
 
+// Service contains all the needed configurations for its Start function
 type Service struct {
 	client           *client.Client
 	wp               *workerpool.WorkerPool
@@ -45,6 +46,7 @@ type Service struct {
 	refundSettings map[common.Address]*setting
 }
 
+// New returns a Service instance
 func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
 	errLogger := log.New(os.Stderr, "gasfeeService: ", log.Lmsgprefix)
 
@@ -106,6 +108,7 @@ func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
 	return s, nil
 }
 
+// Start fork out a goroutine to listen to specific event log which is defined in filterQuery field then bypass into the handle
 func (s *Service) Start() error {
 	subscribing := func() (ethereum.Subscription, chan types.Log, error) {
 		c, err := s.client.Dial()
@@ -167,21 +170,22 @@ func (s *Service) Start() error {
 	return nil
 }
 
+// Close stops the fork out goroutine from Start method
 func (s *Service) Close() {
 	close(s.done)
 }
 
 func (s *Service) handler(vlog types.Log) error {
-	// for searching logs usage to know what group of logs are in the same request
+	// for searching logs usage to know which group of logs are in the same request
 	txHash := vlog.TxHash.String()
 
 	if len(vlog.Topics) != 3 {
-		return fmt.Errorf("handler receive not expecting format on Topics: %v, TxHash:%s", vlog.Topics, txHash)
+		return fmt.Errorf("handler receive not expecting format on topics: %v, tx_hash:%s", vlog.Topics, txHash)
 	}
 
 	setting, ok := s.refundSettings[vlog.Address]
 	if !ok {
-		return fmt.Errorf("handler refund amounts map cannot find: %v, TxHash:%s", vlog.Address, txHash)
+		return fmt.Errorf("handler refund amounts map cannot find: %v, tx_hash:%s", vlog.Address, txHash)
 	}
 
 	transfer_amount := common.BytesToHash(vlog.Data).Big()
@@ -191,7 +195,7 @@ func (s *Service) handler(vlog types.Log) error {
 toAddress:	 %v 
 transfer_amount: %v
 threshold:	 %v
-th_hash:	 %v
+tx_hash:	 %v
 `,
 		toAddress,
 		transfer_amount,
@@ -201,7 +205,7 @@ th_hash:	 %v
 
 	// if threshold is bigger than transfer amount then we skip
 	if setting.refundThreshold.Cmp(transfer_amount) > 1 {
-		return fmt.Errorf("handler receiving transfer_amount < threshold, TxHash:%s", txHash)
+		return fmt.Errorf("handler receiving transfer_amount < threshold, tx_hash:%s", txHash)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.handlerTotalTimeout)
@@ -209,23 +213,23 @@ th_hash:	 %v
 
 	c, err := s.client.Dial()
 	if err != nil {
-		return fmt.Errorf("handler client dialing failed: %v, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler client dialing failed: %v, tx_hash:%s", err, txHash)
 	}
 	defer c.Close()
 
 	nonce, err := c.PendingNonceAt(ctx, s.fromAddress)
 	if err != nil {
-		return fmt.Errorf("handler PendingNonceAt failed: %w, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler PendingNonceAt failed: %w, tx_hash:%s", err, txHash)
 	}
 
 	gasPrice, err := c.SuggestGasPrice(ctx)
 	if err != nil {
-		return fmt.Errorf("handler SuggestGasPrice failed: %w, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler SuggestGasPrice failed: %w, tx_hash:%s", err, txHash)
 	}
 
 	chainID, err := c.NetworkID(ctx)
 	if err != nil {
-		return fmt.Errorf("handler NetworkID failed: %w, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler NetworkID failed: %w, tx_hash:%s", err, txHash)
 	}
 
 	tx, err := types.SignTx(
@@ -245,11 +249,11 @@ th_hash:	 %v
 		s.privateKey,
 	)
 	if err != nil {
-		return fmt.Errorf("handler SignTx failed: %w, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler SignTx failed: %w, tx_hash:%s", err, txHash)
 	}
 
 	if err := c.SendTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("handler SendTransaction failed: %w, TxHash:%s", err, txHash)
+		return fmt.Errorf("handler SendTransaction failed: %w, tx_hash:%s", err, txHash)
 	}
 
 	return nil
