@@ -27,7 +27,7 @@ type setting struct {
 
 // Service contains all the needed configurations for its Start function
 type Service struct {
-	client           *client.Client
+	client           client.Client
 	wp               *workerpool.WorkerPool
 	eventLogPoolSize int
 	done             chan struct{}
@@ -47,7 +47,7 @@ type Service struct {
 }
 
 // New returns a Service instance
-func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
+func New(client client.Client, conf *config.GasFeeService) (*Service, error) {
 	errLogger := log.New(os.Stderr, "gasfeeService: ", log.Lmsgprefix)
 
 	addresses := make([]common.Address, 0, len(conf.RefundAmounts))

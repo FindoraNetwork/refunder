@@ -29,7 +29,10 @@ func main() {
 		log.Fatalf("readConfig failed: %v", err)
 	}
 
-	client := client.New(config.Server)
+	client, err := client.New(config.Server)
+	if err != nil {
+		log.Fatalf("client new failed: %v", err)
+	}
 
 	gasfeeSvc, err := gasfee.New(client, config.GasFeeService)
 	if err != nil {

@@ -3,28 +3,44 @@ package client
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/FindoraNetwork/refunder/config"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-// Client is a wrapper of ethclient
+// Client is a wrapper of ethclient (normal usage) and simulated backend (test usage)
 // The goal is providing a simple way for services can do reconnecting
-type Client struct {
-	config *config.Server
+type Client interface {
+	Dial() (Client, error)
+	NetworkID(context.Context) (*big.Int, error)
+	Close()
+	ethereum.LogFilterer
+	ethereum.TransactionSender
+	ethereum.PendingStateReader
+	ethereum.GasPricer
 }
 
-// New returns a ethclient wrapper structure
-func New(config *config.Server) *Client {
-	return &Client{
+type client struct {
+	config    *config.Server
+	ethclient *ethclient.Client
+}
+
+// New returns a ethclient wrapper structure and dialed a connection with the server
+func New(config *config.Server) (Client, error) {
+	c := &client{
 		config: config,
 	}
+	return c.Dial()
 }
 
 // Dial calls the ethclient.DialContext directly
-func (c *Client) Dial() (*ethclient.Client, error) {
+func (c *client) Dial() (Client, error) {
 	dialTimeout, cancel := context.WithTimeout(
 		context.Background(),
 		time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
@@ -38,5 +54,61 @@ func (c *Client) Dial() (*ethclient.Client, error) {
 		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
 	}
 
-	return client, nil
+	c.ethclient = client
+	return c, nil
+}
+
+// NetworkID calls the ethclient.NetworkID directly
+func (c *client) NetworkID(ctx context.Context) (*big.Int, error) {
+	return c.ethclient.NetworkID(ctx)
+}
+
+// Close calls the ethclient.Close directly
+func (c *client) Close() {
+	c.ethclient.Close()
+}
+
+// FilterLogs calls the ethclient.FilterLogs directly
+func (c *client) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	return c.ethclient.FilterLogs(ctx, q)
+}
+
+// SubscribeFilterLogs calls the ethclient.SubscribeFilterLogs directly
+func (c *client) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
+	return c.ethclient.SubscribeFilterLogs(ctx, q, ch)
+}
+
+// SendTransaction calls the ethclient.SendTransaction directly
+func (c *client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+	return c.ethclient.SendTransaction(ctx, tx)
+}
+
+// PendingBalanceAt calls the ethclient.PendingBalanceAt directly
+func (c *client) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
+	return c.ethclient.PendingBalanceAt(ctx, account)
+}
+
+// PendingStorageAt calls the ethclient.PendingStorageAt directly
+func (c *client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
+	return c.ethclient.PendingStorageAt(ctx, account, key)
+}
+
+// PendingCodeAt calls the ethclient.PendingCodeAt directly
+func (c *client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
+	return c.ethclient.PendingCodeAt(ctx, account)
+}
+
+// PendingNonceAt calls the ethclient.PendingNonceAt directly
+func (c *client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+	return c.ethclient.PendingNonceAt(ctx, account)
+}
+
+// PendingTransactionCount calls the ethclient.PendingTransactionCount directly
+func (c *client) PendingTransactionCount(ctx context.Context) (uint, error) {
+	return c.ethclient.PendingTransactionCount(ctx)
+}
+
+// SuggestGasPrice calls the ethclient.SuggestGasPrice directly
+func (c *client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+	return c.ethclient.SuggestGasPrice(ctx)
 }
