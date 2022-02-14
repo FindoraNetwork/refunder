@@ -3,7 +3,6 @@ package gasfee
 import (
 	"context"
 	"crypto/ecdsa"
-	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -27,18 +26,23 @@ type setting struct {
 }
 
 type Service struct {
-	client              *client.Client
-	wp                  *workerpool.WorkerPool
-	done                chan struct{}
+	client           *client.Client
+	wp               *workerpool.WorkerPool
+	eventLogPoolSize int
+	done             chan struct{}
+
+	stdoutlogger *log.Logger
+	stderrlogger *log.Logger
+
 	subscribeTimeout    time.Duration
-	stdoutlogger        *log.Logger
-	stderrlogger        *log.Logger
-	filterQuery         ethereum.FilterQuery
-	eventLogPoolSize    int
-	privateKey          *ecdsa.PrivateKey
-	fromAddress         common.Address
 	handlerTotalTimeout time.Duration
-	refundSettings      map[common.Address]*setting
+
+	filterQuery ethereum.FilterQuery
+
+	privateKey  *ecdsa.PrivateKey
+	fromAddress common.Address
+
+	refundSettings map[common.Address]*setting
 }
 
 func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
@@ -79,9 +83,10 @@ func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
 			workerpool.WithWorkerNum(conf.WorkerPoolWorkerNum),
 			workerpool.WithLogger(errLogger),
 		),
-		done:             make(chan struct{}),
-		subscribeTimeout: time.Duration(conf.SubscripTimeoutSec) * time.Second,
-		eventLogPoolSize: conf.EventLogPoolSize,
+		done:                make(chan struct{}),
+		subscribeTimeout:    time.Duration(conf.SubscripTimeoutSec) * time.Second,
+		handlerTotalTimeout: time.Duration(conf.HandlerOperationsTimeoutSec) * time.Second,
+		eventLogPoolSize:    conf.EventLogPoolSize,
 		filterQuery: ethereum.FilterQuery{
 			Addresses: addresses,
 			Topics: [][]common.Hash{
@@ -89,10 +94,9 @@ func New(client *client.Client, conf *config.GasFeeService) (*Service, error) {
 				{common.BytesToHash([]byte(""))},
 			},
 		},
-		privateKey:          privateKey,
-		fromAddress:         crypto.PubkeyToAddress(*publicKey),
-		handlerTotalTimeout: time.Duration(conf.HandlerOperationsTimeoutSec) * time.Second,
-		refundSettings:      refundSettings,
+		privateKey:     privateKey,
+		fromAddress:    crypto.PubkeyToAddress(*publicKey),
+		refundSettings: refundSettings,
 	}
 
 	if err := s.Start(); err != nil {
@@ -138,31 +142,24 @@ func (s *Service) Start() error {
 					s.stdoutlogger.Println("websocket.CloseAbnormalClosure try to reconnect")
 					sub, logChan, suberr = subscribing()
 					if suberr != nil {
-						s.stderrlogger.Printf("websocket.CloseAbnormalClosure reconnect failed: %w, service stop\n", suberr)
+						s.stderrlogger.Printf("websocket.CloseAbnormalClosure reconnect failed: %v, service stop", suberr)
 						return
 					}
 				case os.IsTimeout(err):
 					s.stdoutlogger.Println("websocket.read i/o timeout try to reconnect")
 					sub, logChan, suberr = subscribing()
 					if suberr != nil {
-						s.stderrlogger.Printf("websocket.read i/o timeout reconnect failed: %w, service stop\n", suberr)
+						s.stderrlogger.Printf("websocket.read i/o timeout reconnect failed: %v, service stop", suberr)
 						return
 					}
 				default:
-					s.stderrlogger.Printf("subscribe websocket receive error: %v\n", err)
+					s.stderrlogger.Printf("subscribe websocket receive error: %v", err)
 				}
 
 			case vlog := <-logChan:
-				// s.wp.PutJob(func() error {
-				if err := s.handler(vlog); err != nil {
-					switch err {
-					// case ErrTransferAmountSmallerThanThreshold:
-					default:
-						s.stderrlogger.Println(err)
-					}
-				}
-				//	return nil
-				// })
+				s.wp.PutJob(func() error {
+					return s.handler(vlog)
+				})
 
 			}
 		}
@@ -174,26 +171,37 @@ func (s *Service) Close() {
 	close(s.done)
 }
 
-var ErrTransferAmountSmallerThanThreshold = errors.New("handler receiving transfer_amount < threshold")
-
 func (s *Service) handler(vlog types.Log) error {
-	s.stdoutlogger.Println(vlog)
+	// for searching logs usage to know what group of logs are in the same request
+	txHash := vlog.TxHash.String()
 
 	if len(vlog.Topics) != 3 {
-		return fmt.Errorf("handler receive not expecting format on Topics: %v", vlog)
+		return fmt.Errorf("handler receive not expecting format on Topics: %v, TxHash:%s", vlog.Topics, txHash)
 	}
 
 	setting, ok := s.refundSettings[vlog.Address]
 	if !ok {
-		return fmt.Errorf("handler refund amounts map cannot find: %v", vlog.Address)
+		return fmt.Errorf("handler refund amounts map cannot find: %v, TxHash:%s", vlog.Address, txHash)
 	}
 
-	s.stdoutlogger.Println("transfer_amount: ", common.BytesToHash(vlog.Data).Big())
-	s.stdoutlogger.Println("threshold: ", setting.refundThreshold)
+	transfer_amount := common.BytesToHash(vlog.Data).Big()
+	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
+
+	s.stdoutlogger.Printf(`gas refunder receiving:
+toAddress:	 %v 
+transfer_amount: %v
+threshold:	 %v
+th_hash:	 %v
+`,
+		toAddress,
+		transfer_amount,
+		setting.refundThreshold,
+		txHash,
+	)
 
 	// if threshold is bigger than transfer amount then we skip
-	if setting.refundThreshold.Cmp(common.BytesToHash(vlog.Data).Big()) > 1 {
-		return ErrTransferAmountSmallerThanThreshold
+	if setting.refundThreshold.Cmp(transfer_amount) > 1 {
+		return fmt.Errorf("handler receiving transfer_amount < threshold, TxHash:%s", txHash)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), s.handlerTotalTimeout)
@@ -201,28 +209,24 @@ func (s *Service) handler(vlog types.Log) error {
 
 	c, err := s.client.Dial()
 	if err != nil {
-		return fmt.Errorf("handler client dialing failed: %v", err)
+		return fmt.Errorf("handler client dialing failed: %v, TxHash:%s", err, txHash)
 	}
 	defer c.Close()
 
 	nonce, err := c.PendingNonceAt(ctx, s.fromAddress)
 	if err != nil {
-		return fmt.Errorf("handler PendingNonceAt failed: %w", err)
+		return fmt.Errorf("handler PendingNonceAt failed: %w, TxHash:%s", err, txHash)
 	}
 
 	gasPrice, err := c.SuggestGasPrice(ctx)
 	if err != nil {
-		return fmt.Errorf("handler SuggestGasPrice failed: %w", err)
+		return fmt.Errorf("handler SuggestGasPrice failed: %w, TxHash:%s", err, txHash)
 	}
-
-	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
 
 	chainID, err := c.NetworkID(ctx)
 	if err != nil {
-		return fmt.Errorf("handler NetworkID failed: %w", err)
+		return fmt.Errorf("handler NetworkID failed: %w, TxHash:%s", err, txHash)
 	}
-
-	s.stdoutlogger.Println("Value: ", setting.refundAmount)
 
 	tx, err := types.SignTx(
 		types.NewTx(&types.LegacyTx{
@@ -241,11 +245,11 @@ func (s *Service) handler(vlog types.Log) error {
 		s.privateKey,
 	)
 	if err != nil {
-		return fmt.Errorf("handler SignTx failed: %w", err)
+		return fmt.Errorf("handler SignTx failed: %w, TxHash:%s", err, txHash)
 	}
 
 	if err := c.SendTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("handler SendTransaction failed: %w", err)
+		return fmt.Errorf("handler SendTransaction failed: %w, TxHash:%s", err, txHash)
 	}
 
 	return nil
