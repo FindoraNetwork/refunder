@@ -8,7 +8,7 @@ import (
 
 	"github.com/FindoraNetwork/refunder/client"
 	"github.com/FindoraNetwork/refunder/config"
-	"github.com/FindoraNetwork/refunder/gasfee"
+	"github.com/FindoraNetwork/refunder/giveaway"
 )
 
 const help = `
@@ -34,14 +34,14 @@ func main() {
 		log.Fatalf("client new failed: %v", err)
 	}
 
-	gasfeeSvc, err := gasfee.New(client, config.GasFeeService)
+	giveawaySvc, err := giveaway.New(client, config.GiveawayService)
 	if err != nil {
-		log.Fatalf("gasfee new service failed: %v, config: %v", err, config)
+		log.Fatalf("giveaway new service failed :%v, config :%v", err, config.GiveawayService)
 	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	<-c
-	gasfeeSvc.Close()
+	giveawaySvc.Close()
 }
