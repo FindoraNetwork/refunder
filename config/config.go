@@ -11,7 +11,8 @@ type Config struct {
 	// Server is the configuration for dialing to the EVM Websocket server
 	Server *Server `json:"server"`
 	// GasFeeService is the configuration for gas fee service
-	GasFeeService *GasFeeService `json:"gas_fee_service"`
+	GasFeeService   *GasFeeService   `json:"gas_fee_service"`
+	GiveawayService *GiveawayService `json:"giveaway_service"`
 }
 
 type Server struct {
@@ -19,6 +20,22 @@ type Server struct {
 	ServerDialTimeoutSec uint `json:"server_dial_timeout_sec"`
 	// the websocket server address with port number
 	ServerWSAddress string `json:"server_ws_address"`
+}
+
+type GiveawayService struct {
+	// PrivateKey for the founding source
+	PrivateKey string `json:"private_key"`
+	// HandlerTotalTimeoutSec is the timeout second for all operations int the handle function
+	HandlerTotalTimeoutSec uint `json:"handler_operations_timeout_sec"`
+	// SubscripTimeoutSec is the timeout second for dialing and subscribing to the server
+	SubscripTimeoutSec uint `json:"subscrip_timeout_sec"`
+	// EventLogPoolSize is the size of the subscribed buffered channel
+	EventLogPoolSize int `json:"event_log_pool_size"`
+	// FixedGiveawayWei is the amount of token to incentive
+	// Like 0.003 FRA = 30000000000000000 wei
+	FixedGiveawayWei uint64 `json:"fixed_giveaway_wei"`
+	// TokenAddresses is the address of tokens gonna to listen to incentive
+	TokenAddresses []string `json:"token_addresses"`
 }
 
 type GasFeeService struct {
