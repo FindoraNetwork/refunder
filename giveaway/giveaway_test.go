@@ -90,7 +90,7 @@ func setup(t *testing.T) (client.Client, string) {
 // TODO: waiting for the PM to confirm the requirements then
 // 1. adding more detail unit tests
 // 2. adding a e2e test
-func Test_GaseService(t *testing.T) {
+func Test_GiveawayService(t *testing.T) {
 	client, privateKey := setup(t)
 	service, err := giveaway.New(client, &config.GiveawayService{
 		PrivateKey:             privateKey,
