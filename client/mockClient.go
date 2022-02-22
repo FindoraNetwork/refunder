@@ -76,3 +76,31 @@ func (c *MockClient) CodeAt(ctx context.Context, account common.Address, blockNu
 func (c *MockClient) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	return c.Client.NonceAt(ctx, account, blockNumber)
 }
+
+func (c *MockClient) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	return c.Client.BlockByHash(ctx, hash)
+}
+
+func (c *MockClient) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return c.Client.BlockByNumber(ctx, number)
+}
+
+func (c *MockClient) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+	return c.Client.HeaderByHash(ctx, hash)
+}
+
+func (c *MockClient) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	return c.Client.HeaderByNumber(ctx, number)
+}
+
+func (c *MockClient) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
+	return c.Client.TransactionCount(ctx, blockHash)
+}
+
+func (c *MockClient) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
+	return c.Client.TransactionInBlock(ctx, blockHash, index)
+}
+
+func (c *MockClient) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	return c.Client.SubscribeNewHead(ctx, ch)
+}

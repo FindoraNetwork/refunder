@@ -25,6 +25,7 @@ type Client interface {
 	ethereum.ChainStateReader
 	ethereum.PendingStateReader
 	ethereum.GasPricer
+	ethereum.ChainReader
 }
 
 type client struct {
@@ -57,6 +58,41 @@ func (c *client) Dial() (Client, error) {
 
 	c.ethclient = client
 	return c, nil
+}
+
+// BlockByHash calls the ethclient.BlockByHash directly
+func (c *client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	return c.ethclient.BlockByHash(ctx, hash)
+}
+
+// BlockByNumber calls the ethclient.BlockByNumber directly
+func (c *client) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return c.ethclient.BlockByNumber(ctx, number)
+}
+
+// HeaderByHash calls the ethclient.HeaderByHash directly
+func (c *client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+	return c.ethclient.HeaderByHash(ctx, hash)
+}
+
+// HeaderByNumber calls the ethclient.HeaderByNumber directly
+func (c *client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	return c.ethclient.HeaderByNumber(ctx, number)
+}
+
+// TransactionCount calls the ethclient.TransactionCount directly
+func (c *client) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
+	return c.ethclient.TransactionCount(ctx, blockHash)
+}
+
+// TransactionInBlock calls the ethclient.TransactionInBlock directly
+func (c *client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
+	return c.ethclient.TransactionInBlock(ctx, blockHash, index)
+}
+
+// SubscribeNewHead calls the ethclient.SubscribeNewHead directly
+func (c *client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
+	return c.ethclient.SubscribeNewHead(ctx, ch)
 }
 
 // BalanceAt calls the ethclient.BalanceAt directly

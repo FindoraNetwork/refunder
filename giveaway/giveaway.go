@@ -134,6 +134,10 @@ func (s *Service) Start() error {
 				}
 
 			case vlog := <-logChan:
+				// we have to handle event log one by one,
+				// because current Findora Network has not implemented memory storage,
+				// so getting any pending state is meanless,
+				// and we have to maintain the nonce ourself.
 				if err := s.handler(vlog); err != nil {
 					switch err {
 					case ErrNotEligible:
@@ -168,6 +172,7 @@ func (s *Service) handler(vlog types.Log) error {
 	}
 
 	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
+	blockNumber := big.NewInt(0).SetUint64(vlog.BlockNumber)
 
 	c, err := s.client.Dial()
 	if err != nil {
@@ -175,11 +180,12 @@ func (s *Service) handler(vlog types.Log) error {
 	}
 	defer c.Close()
 
-	toBalance, err := c.PendingBalanceAt(ctx, toAddress)
+	toBalance, err := c.BalanceAt(ctx, toAddress, blockNumber)
 	if err != nil {
 		return fmt.Errorf("handler toAddress PendingBalanceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
-	toNonce, err := c.PendingNonceAt(ctx, toAddress)
+
+	toNonce, err := c.NonceAt(ctx, toAddress, blockNumber)
 	if err != nil {
 		return fmt.Errorf("handler toAddress PendingNonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
@@ -188,12 +194,14 @@ func (s *Service) handler(vlog types.Log) error {
 to_address:	 %v 
 to_balance:      %v
 to_nonce:	 %v
+block_number:	 %v
 fix_giveaway:	 %v
 tx_hash:	 %v
 `,
 		toAddress,
 		toBalance,
 		toNonce,
+		blockNumber,
 		s.fixedGiveawayWei,
 		txHash,
 	)
