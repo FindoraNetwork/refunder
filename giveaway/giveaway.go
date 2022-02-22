@@ -235,7 +235,7 @@ tx_hash:	 %v
 
 	tx, err := types.SignTx(
 		types.NewTx(&types.LegacyTx{
-			Nonce: nonce + 1,
+			Nonce: nonce,
 			// recipient address
 			To: &toAddress,
 			// wei(10^18)

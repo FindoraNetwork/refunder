@@ -27,19 +27,23 @@ import (
 type giveawayTestSuite struct {
 	suite.Suite
 
-	chainID    *big.Int
-	instance   *contract.Contract
-	privateKey *ecdsa.PrivateKey
-	fromAddr   common.Address
-	tokenAddr  common.Address
-	toAddrs    []common.Address
-	serv       *giveaway.Service
+	chainID       *big.Int
+	instance      *contract.Contract
+	privateKey    *ecdsa.PrivateKey
+	fromAddr      common.Address
+	tokenAddr     common.Address
+	toAddrs       []common.Address
+	serv          *giveaway.Service
+	evmWSAddress  string
+	evmPRCAddress string
 }
 
 func TestE2EGiveawayTestSuite(t *testing.T) {
 	suite.Run(t, &giveawayTestSuite{
-		toAddrs: make([]common.Address, 0, 3),
-		chainID: big.NewInt(2153),
+		toAddrs:       make([]common.Address, 0, 3),
+		chainID:       big.NewInt(2153),
+		evmWSAddress:  "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		evmPRCAddress: "https://prod-testnet.prod.findora.org:8545",
 	})
 }
 
@@ -55,9 +59,9 @@ func (s *giveawayTestSuite) SetupSuite() {
 func (s *giveawayTestSuite) setupSuiteStartService() {
 	c, err := client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		ServerWSAddress:      s.evmWSAddress,
 	})
-	s.Require().NoError(err, "client.New")
+	s.Require().NoErrorf(err, "client.New:%v", err)
 
 	srv, err := giveaway.New(c, &config.GiveawayService{
 		PrivateKey:             hexutil.Encode(crypto.FromECDSA(s.privateKey)[2:]),
@@ -68,7 +72,7 @@ func (s *giveawayTestSuite) setupSuiteStartService() {
 		MaxCapWei:              big.NewInt(60000000000000000), // 0.006
 		TokenAddresses:         []string{s.tokenAddr.String()},
 	})
-	s.Require().NoError(err, "giveaway.New")
+	s.Require().NoErrorf(err, "giveaway.New:%v", err)
 
 	s.serv = srv
 }
@@ -76,7 +80,7 @@ func (s *giveawayTestSuite) setupSuiteStartService() {
 func (s *giveawayTestSuite) setupSuiteGenerateWallets() {
 	for i := 0; i < 3; i++ {
 		privateKey, err := crypto.GenerateKey()
-		s.Require().NoError(err, crypto.GenerateKey)
+		s.Require().NoErrorf(err, "crypto.GenerateKey:%v", err)
 		publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
 		s.Require().True(ok, "privateKey.Public().(*ecdsa.PublicKey)")
 		s.toAddrs = append(s.toAddrs, crypto.PubkeyToAddress(*publicKey))
@@ -87,32 +91,32 @@ func (s *giveawayTestSuite) setupSuiteDeployContract() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	c, err := ethclient.DialContext(ctx, "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546")
-	s.Require().NoError(err, "ethclient.DialContext")
+	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
+	s.Require().NoErrorf(err, "ethclient.DialContext:%v", err)
 
 	privateKey, err := crypto.HexToECDSA(os.Getenv("TESTING_WALLET_PRIVATE_KEY"))
-	s.Require().NoError(err, "crypto.HexToECDSA")
+	s.Require().NoErrorf(err, "crypto.HexToECDSA:%v", err)
 
 	publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
 	s.Require().True(ok, "privateKey.Public().(*ecdsa.PublicKey)")
 
 	fromAddr := crypto.PubkeyToAddress(*publicKey)
 	nonce, err := c.PendingNonceAt(ctx, fromAddr)
-	s.Require().NoError(err, "c.PendingNonceAt")
+	s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
 
 	gasPrice, err := c.SuggestGasPrice(ctx)
-	s.Require().NoError(err, "c.SuggestGasPrice")
+	s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
 
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, s.chainID)
-	s.Require().NoError(err, "bind.NewKeyedTransactorWithChainID")
+	s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
 
-	auth.Nonce = big.NewInt(0).SetUint64(nonce + 1)
+	auth.Nonce = big.NewInt(0).SetUint64(nonce)
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = 300000
 	auth.GasPrice = gasPrice
 
 	addr, tx, instance, err := contract.DeployContract(auth, c)
-	s.Require().NoError(err, "contract.DeployContract")
+	s.Require().NoErrorf(err, "contract.DeployContract:%v", err)
 
 	s.T().Logf("giveawayTestSuite, address: %v", addr)
 	s.T().Logf("giveawayTestSuite, tx: %v", tx)
@@ -131,26 +135,26 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	c, err := ethclient.DialContext(ctx, "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546")
-	s.Require().NoError(err, "ethclient.DialContext")
+	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
+	s.Require().NoErrorf(err, "ethclient.DialContext:%v", err)
 
 	for i := 0; i < len(s.toAddrs)-1; i++ {
 		toAddr := s.toAddrs[i]
 		gasPrice, err := c.SuggestGasPrice(ctx)
-		s.Require().NoError(err, "c.SuggestGasPrice")
+		s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
 		nonce, err := c.PendingNonceAt(ctx, s.fromAddr)
-		s.Require().NoError(err, "c.PendingNonceAt")
+		s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
 
 		auth, err := bind.NewKeyedTransactorWithChainID(s.privateKey, s.chainID)
-		s.Require().NoError(err, "bind.NewKeyedTransactorWithChainID")
+		s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
 
-		auth.Nonce = big.NewInt(0).SetUint64(nonce + 1)
+		auth.Nonce = big.NewInt(0).SetUint64(nonce)
 		auth.Value = big.NewInt(0)
 		auth.GasLimit = 300000
 		auth.GasPrice = gasPrice
 
 		tx, err := s.instance.Mint(auth, toAddr, big.NewInt(90000000000000000))
-		s.Require().NoError(err, "instance.Mint")
+		s.Require().NoErrorf(err, "instance.Mint:%v", err)
 		s.T().Logf("mint, toAddr:%v, tx:%v", toAddr, tx)
 
 		time.Sleep(time.Second)
@@ -159,7 +163,7 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 			From:    s.fromAddr,
 			Context: ctx,
 		}, toAddr)
-		s.Require().NoError(err, "instance.BalanceOf")
+		s.Require().NoErrorf(err, "instance.BalanceOf:%v", err)
 		s.Require().Equal(balance, big.NewInt(30000000000000000))
 	}
 
@@ -168,6 +172,6 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 		From:    s.fromAddr,
 		Context: ctx,
 	}, s.toAddrs[len(s.toAddrs)-1])
-	s.Require().NoError(err, "instance.BalanceOf")
+	s.Require().NoErrorf(err, "instance.BalanceOf:%v", err)
 	s.Require().Equal(balance, big.NewInt(0))
 }
