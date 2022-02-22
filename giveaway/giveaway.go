@@ -182,12 +182,12 @@ func (s *Service) handler(vlog types.Log) error {
 
 	toBalance, err := c.BalanceAt(ctx, toAddress, blockNumber)
 	if err != nil {
-		return fmt.Errorf("handler toAddress PendingBalanceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
+		return fmt.Errorf("handler toAddress BalanceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
 
 	toNonce, err := c.NonceAt(ctx, toAddress, blockNumber)
 	if err != nil {
-		return fmt.Errorf("handler toAddress PendingNonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
+		return fmt.Errorf("handler toAddress NonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
 
 	s.stdoutlogger.Printf(`handler receiving:
