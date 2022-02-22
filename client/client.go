@@ -22,6 +22,7 @@ type Client interface {
 	Close()
 	ethereum.LogFilterer
 	ethereum.TransactionSender
+	ethereum.ChainStateReader
 	ethereum.PendingStateReader
 	ethereum.GasPricer
 }
@@ -56,6 +57,26 @@ func (c *client) Dial() (Client, error) {
 
 	c.ethclient = client
 	return c, nil
+}
+
+// BalanceAt calls the ethclient.BalanceAt directly
+func (c *client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+	return c.ethclient.BalanceAt(ctx, account, blockNumber)
+}
+
+// StorageAt calls the ethclient.StorageAt directly
+func (c *client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+	return c.ethclient.StorageAt(ctx, account, key, blockNumber)
+}
+
+// CodeAt calls the ethclient.CodeAt directly
+func (c *client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+	return c.ethclient.CodeAt(ctx, account, blockNumber)
+}
+
+// NonceAt calls the ethclient.NonceAt directly
+func (c *client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+	return c.ethclient.NonceAt(ctx, account, blockNumber)
 }
 
 // NetworkID calls the ethclient.NetworkID directly
