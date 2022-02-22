@@ -19,3 +19,7 @@ vendor/
 
 # Config file
 *.json
+
+# Solidity gen files
+*.abi
+*.bin

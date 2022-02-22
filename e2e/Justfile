@@ -1,0 +1,15 @@
+gen:
+	#!/usr/bin/env bash
+	set -euo pipefail
+	
+	cr=podman
+	if [ -x "$(command -v podman)" ]; then
+		cr=podman
+	elif [ -x "$(command -v docker)" ]; then
+		cr=docker
+	else
+		echo "container runtime [podman | docker] not installed"; exit 1
+	fi
+
+	$cr run -v ./giveaway/contract:/sources docker.io/ethereum/solc:stable -o /sources --abi --bin /sources/frc20Token.sol
+	$cr run --rm -v ./giveaway/contract:/sources --entrypoint abigen docker.io/ethereum/client-go:alltools-stable --bin=/sources/FRC20Token.bin --abi=/sources/FRC20Token.abi --pkg=contract --out=/sources/frc20Token.go
