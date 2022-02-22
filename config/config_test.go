@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"io/ioutil"
+	"math/big"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +13,9 @@ import (
 )
 
 func Test_ReadConfig(t *testing.T) {
+	maxCapWei, ok := big.NewInt(0).SetString("20000000000000000000000", 10)
+	assert.True(t, ok)
+
 	tests := []struct {
 		name         string
 		cmd          string
@@ -42,6 +46,22 @@ func Test_ReadConfig(t *testing.T) {
 			cmd:          "--config",
 			conf_content: "{-----}",
 			wantErr:      true,
+		},
+		{
+			name: "parsing giveaway service config",
+			cmd:  "--config",
+			conf_content: `{
+				"giveaway_service": {
+					"fixed_giveaway_wei": 30000000000000000, 
+					"max_cap_wei": 20000000000000000000000 
+				}
+			}`,
+			want: &config.Config{
+				GiveawayService: &config.GiveawayService{
+					FixedGiveawayWei: big.NewInt(0).SetUint64(30000000000000000),
+					MaxCapWei:        maxCapWei,
+				},
+			},
 		},
 	}
 

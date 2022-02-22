@@ -35,9 +35,11 @@ type Service struct {
 
 	filterQuery ethereum.FilterQuery
 
-	privateKey       *ecdsa.PrivateKey
-	fromAddress      common.Address
-	fixedGiveawayWei *big.Int
+	privateKey        *ecdsa.PrivateKey
+	fromAddress       common.Address
+	maxCapWei         *big.Int
+	fixedGiveawayWei  *big.Int
+	currentGiveoutWei *big.Int
 }
 
 func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
@@ -71,9 +73,11 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 				{common.BytesToHash([]byte(""))},
 			},
 		},
-		privateKey:       privateKey,
-		fromAddress:      crypto.PubkeyToAddress(*publicKey),
-		fixedGiveawayWei: big.NewInt(0).SetUint64(conf.FixedGiveawayWei),
+		privateKey:        privateKey,
+		fromAddress:       crypto.PubkeyToAddress(*publicKey),
+		fixedGiveawayWei:  conf.FixedGiveawayWei,
+		maxCapWei:         conf.MaxCapWei,
+		currentGiveoutWei: big.NewInt(0),
 	}
 
 	if err := s.Start(); err != nil {
@@ -196,6 +200,8 @@ to_balance:      %v
 to_nonce:	 %v
 block_number:	 %v
 fix_giveaway:	 %v
+max_cap:	 %v
+current_giveout: %v
 tx_hash:	 %v
 `,
 		toAddress,
@@ -203,10 +209,12 @@ tx_hash:	 %v
 		toNonce,
 		blockNumber,
 		s.fixedGiveawayWei,
+		s.maxCapWei,
+		s.currentGiveoutWei,
 		txHash,
 	)
 
-	if toBalance.Cmp(big.NewInt(0)) != 0 && toNonce != 0 {
+	if toBalance.Cmp(big.NewInt(0)) != 0 || toNonce != 0 || s.currentGiveoutWei.Cmp(s.maxCapWei) >= 0 {
 		return ErrNotEligible
 	}
 
@@ -249,5 +257,6 @@ tx_hash:	 %v
 		return fmt.Errorf("handler SendTransaction failed: %w, tx_hash:%s", err, txHash)
 	}
 
+	s.currentGiveoutWei = s.currentGiveoutWei.Add(s.currentGiveoutWei, s.fixedGiveawayWei)
 	return nil
 }
