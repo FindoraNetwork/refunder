@@ -12,3 +12,10 @@ https://docs.soliditylang.org/en/latest/installing-solidity.html
 ```bash
 just gen
 ```
+
+### testing environment parameters
+
+those end-to-end tests are required environment parameters as input and those are been set up in the GitHub action.
+
+- PRIVATE_KEY
+

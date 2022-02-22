@@ -236,7 +236,7 @@ tx_hash:	 %v
 	tx, err := types.SignTx(
 		types.NewTx(&types.LegacyTx{
 			Nonce: nonce + 1,
-			// recepient address
+			// recipient address
 			To: &toAddress,
 			// wei(10^18)
 			Value: s.fixedGiveawayWei,
