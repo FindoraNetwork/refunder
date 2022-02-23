@@ -1,9 +1,7 @@
-name: running tests
+name: running e2e tests
 on:
   push:
     tags: ["[0-9]+.[0-9]+.[0-9]+"]
-    branches: [main]
-  pull_request:
 
 jobs:
   golangci:
@@ -30,4 +28,4 @@ jobs:
       - uses: extractions/setup-just@v1
 
       - run: |
-          just test 
+          just e2e
