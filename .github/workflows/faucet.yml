@@ -1,0 +1,14 @@
+name: Trigger TT Testnet Faucet Every Day At 00:00
+
+on:
+  schedule:
+    # Runs "at minute 55 past every hour" (see https://crontab.guru)
+    - cron: '0 0 * * *'
+jobs:
+  build:
+    name: Trigger Faucet
+    runs-on: ubuntu-latest
+    steps:
+      - name: cURL request
+        run: | 
+          curl -X POST -H 'Content-Type: application/json' --data '{"address":"0x5aD47C41755D8087fBb2b8BC22aE1DBA6ABbC157","symbol":"TT"}' https://faucet-testnet.thundercore.com/api/request
