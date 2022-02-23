@@ -20,6 +20,8 @@ type Server struct {
 	ServerDialTimeoutSec uint `json:"server_dial_timeout_sec"`
 	// the websocket server address with port number
 	ServerWSAddress string `json:"server_ws_address"`
+	// the http server address with port number
+	ServerRPCAddress string `json:"server_rpc_address"`
 }
 
 type GiveawayService struct {

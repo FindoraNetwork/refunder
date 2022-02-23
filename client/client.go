@@ -17,7 +17,8 @@ import (
 // Client is a wrapper of ethclient (normal usage) and simulated backend (test usage)
 // The goal is providing a simple way for services can do reconnecting
 type Client interface {
-	Dial() (Client, error)
+	DialWS() (Client, error)
+	DialRPC() (Client, error)
 	NetworkID(context.Context) (*big.Int, error)
 	Close()
 	ethereum.LogFilterer
@@ -34,15 +35,31 @@ type client struct {
 }
 
 // New returns a ethclient wrapper structure and dialed a connection with the server
-func New(config *config.Server) (Client, error) {
-	c := &client{
+func New(config *config.Server) Client {
+	return &client{
 		config: config,
 	}
-	return c.Dial()
 }
 
-// Dial calls the ethclient.DialContext directly
-func (c *client) Dial() (Client, error) {
+// DialRPC calls the ethclient.DialContext directly with http address
+func (c *client) DialRPC() (Client, error) {
+	dialTimeout, cancel := context.WithTimeout(
+		context.Background(),
+		time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
+	)
+	defer cancel()
+
+	client, err := ethclient.DialContext(dialTimeout, c.config.ServerRPCAddress)
+	if err != nil {
+		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
+	}
+
+	c.ethclient = client
+	return c, nil
+}
+
+// DialWS calls the ethclient.DialContext directly with websocket address
+func (c *client) DialWS() (Client, error) {
 	dialTimeout, cancel := context.WithTimeout(
 		context.Background(),
 		time.Duration(c.config.ServerDialTimeoutSec)*time.Second,

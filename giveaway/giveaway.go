@@ -88,7 +88,7 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 // Start fork out a goroutine to listen to specific event log which is defined in filterQuery field then bypass into the handler
 func (s *Service) Start() error {
 	subscribing := func() (ethereum.Subscription, chan types.Log, error) {
-		c, err := s.client.Dial()
+		c, err := s.client.DialWS()
 		if err != nil {
 			return nil, nil, fmt.Errorf("start dialing to server failed: %w", err)
 		}
@@ -176,7 +176,7 @@ func (s *Service) handler(vlog types.Log) error {
 	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
 	blockNumber := big.NewInt(0).SetUint64(vlog.BlockNumber)
 
-	c, err := s.client.Dial()
+	c, err := s.client.DialRPC()
 	if err != nil {
 		return fmt.Errorf("handler client dialing failed: %v, tx_hash:%s", err, txHash)
 	}

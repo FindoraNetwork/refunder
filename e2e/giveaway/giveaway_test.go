@@ -45,13 +45,16 @@ type giveawayTestSuite struct {
 
 func TestE2EGiveawayTestSuite(t *testing.T) {
 	suite.Run(t, &giveawayTestSuite{
-		toAddrs:          make([]common.Address, 0, 3),
-		chainID:          big.NewInt(2153),
-		evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
-		evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
+		toAddrs: make([]common.Address, 0, 3),
+		// chainID:          big.NewInt(2153),
+		// evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		// evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
+		chainID:          big.NewInt(18),
+		evmWSAddress:     "wss://testnet-ws.thundercore.com",
+		evmPRCAddress:    "https://testnet-rpc.thundercore.com",
 		blockTime:        16 * time.Second,
-		fixedGiveawayWei: big.NewInt(30000000000000), // 0.00003
-		maxCapWei:        big.NewInt(60000000000000), // 0.00006
+		fixedGiveawayWei: big.NewInt(3000000000000000), // 0.003
+		maxCapWei:        big.NewInt(6000000000000000), // 0.006
 	})
 }
 
@@ -68,21 +71,21 @@ func (s *giveawayTestSuite) SetupSuite() {
 }
 
 func (s *giveawayTestSuite) setupSuiteStartService() {
-	c, err := client.New(&config.Server{
-		ServerDialTimeoutSec: 3,
-		ServerWSAddress:      s.evmWSAddress,
-	})
-	s.Require().NoErrorf(err, "client.New:%v", err)
-
-	srv, err := giveaway.New(c, &config.GiveawayService{
-		PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
-		HandlerTotalTimeoutSec: 3,
-		SubscripTimeoutSec:     1,
-		EventLogPoolSize:       9,
-		FixedGiveawayWei:       s.fixedGiveawayWei,
-		MaxCapWei:              s.maxCapWei,
-		TokenAddresses:         []string{s.tokenAddr.String()},
-	})
+	srv, err := giveaway.New(
+		client.New(&config.Server{
+			ServerDialTimeoutSec: 3,
+			ServerWSAddress:      s.evmWSAddress,
+			ServerRPCAddress:     s.evmPRCAddress,
+		}),
+		&config.GiveawayService{
+			PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
+			HandlerTotalTimeoutSec: 3,
+			SubscripTimeoutSec:     1,
+			EventLogPoolSize:       9,
+			FixedGiveawayWei:       s.fixedGiveawayWei,
+			MaxCapWei:              s.maxCapWei,
+			TokenAddresses:         []string{s.tokenAddr.String()},
+		})
 	s.Require().NoErrorf(err, "giveaway.New:%v", err)
 
 	s.serv = srv
@@ -117,11 +120,11 @@ func (s *giveawayTestSuite) setupSuiteDeployContract() {
 
 	addr, tx, instance, err := contract.DeployContract(s.genAuth(ctx, c), c)
 	s.Require().NoErrorf(err, "contract.DeployContract:%v", err)
+	s.instance = instance
+	s.tokenAddr = addr
 
 	s.T().Logf("giveawayTestSuite, address: %v", addr)
 	s.T().Logf("giveawayTestSuite, tx: %v", tx)
-	s.instance = instance
-	s.tokenAddr = addr
 }
 
 func (s *giveawayTestSuite) TearDownSuite() {
@@ -140,7 +143,7 @@ func (s *giveawayTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *b
 
 	auth.Nonce = big.NewInt(0).SetUint64(nonce)
 	auth.Value = big.NewInt(0)
-	auth.GasLimit = 3000000
+	auth.GasLimit = 30000000
 	auth.GasPrice = gasPrice
 	return auth
 }
@@ -217,9 +220,6 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 				"toAddr:%v, want:%v, got:%v",
 				toAddr, wants[i].wantBalance.Uint64(), gotBalance.Uint64(),
 			)
-
-			// update the expecting values for next test case
-			wants[i].blockNumber = big.NewInt(0).SetUint64(blockNum2)
 		}
 	}
 }

@@ -29,12 +29,7 @@ func main() {
 		log.Fatalf("readConfig failed: %v", err)
 	}
 
-	client, err := client.New(config.Server)
-	if err != nil {
-		log.Fatalf("client new failed: %v", err)
-	}
-
-	giveawaySvc, err := giveaway.New(client, config.GiveawayService)
+	giveawaySvc, err := giveaway.New(client.New(config.Server), config.GiveawayService)
 	if err != nil {
 		log.Fatalf("giveaway new service failed :%v, config :%v", err, config.GiveawayService)
 	}

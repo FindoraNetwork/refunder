@@ -10,19 +10,27 @@ import (
 )
 
 func Test_Client(t *testing.T) {
-	c, err := client.New(&config.Server{
+	c := client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
 		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546",
+		ServerRPCAddress:     "https://prod-testnet.prod.findora.org:8545",
 	})
+
+	_, err := c.DialWS()
+	assert.NoError(t, err)
+	_, err = c.DialRPC()
 	assert.NoError(t, err)
 
-	_, err = c.Dial()
-	assert.NoError(t, err)
-
-	c, err = client.New(&config.Server{
+	c = client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
 		ServerWSAddress:      "not-exists-address",
+		ServerRPCAddress:     "not-exists-address",
 	})
+
+	gc, err := c.DialWS()
 	assert.Error(t, err)
-	assert.Nil(t, c)
+	assert.Nil(t, gc)
+	gc, err = c.DialRPC()
+	assert.Error(t, err)
+	assert.Nil(t, gc)
 }

@@ -14,7 +14,11 @@ type MockClient struct {
 	Client *backends.SimulatedBackend
 }
 
-func (c *MockClient) Dial() (Client, error) {
+func (c *MockClient) DialRPC() (Client, error) {
+	return c, nil
+}
+
+func (c *MockClient) DialWS() (Client, error) {
 	return c, nil
 }
 
