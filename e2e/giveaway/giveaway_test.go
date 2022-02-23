@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/FindoraNetwork/refunder/e2e/giveaway/contract"
 	"github.com/FindoraNetwork/refunder/giveaway"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -27,33 +29,42 @@ import (
 type giveawayTestSuite struct {
 	suite.Suite
 
-	chainID       *big.Int
-	instance      *contract.Contract
-	privateKey    *ecdsa.PrivateKey
-	fromAddr      common.Address
-	tokenAddr     common.Address
-	toAddrs       []common.Address
-	serv          *giveaway.Service
-	evmWSAddress  string
-	evmPRCAddress string
+	chainID          *big.Int
+	instance         *contract.Contract
+	privateKey       *ecdsa.PrivateKey
+	fromAddr         common.Address
+	tokenAddr        common.Address
+	toAddrs          []common.Address
+	serv             *giveaway.Service
+	evmWSAddress     string
+	evmPRCAddress    string
+	blockTime        time.Duration
+	fixedGiveawayWei *big.Int
+	maxCapWei        *big.Int
 }
 
 func TestE2EGiveawayTestSuite(t *testing.T) {
 	suite.Run(t, &giveawayTestSuite{
-		toAddrs:       make([]common.Address, 0, 3),
-		chainID:       big.NewInt(2153),
-		evmWSAddress:  "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
-		evmPRCAddress: "https://prod-testnet.prod.findora.org:8545",
+		toAddrs:          make([]common.Address, 0, 3),
+		chainID:          big.NewInt(2153),
+		evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
+		blockTime:        16 * time.Second,
+		fixedGiveawayWei: big.NewInt(30000000000000), // 0.00003
+		maxCapWei:        big.NewInt(60000000000000), // 0.00006
 	})
 }
 
 func (s *giveawayTestSuite) SetupSuite() {
 	// Step 1. deploy a token creation contract to do the transfer action
 	s.setupSuiteDeployContract()
+	s.T().Log("setupSuiteDeployContract done")
 	// Step 2. generate three destination wallets
 	s.setupSuiteGenerateWallets()
+	s.T().Log("setupSuiteGenerateWallets done")
 	// Step 3. start giveaway service
 	s.setupSuiteStartService()
+	s.T().Log("setupSuiteStartService done")
 }
 
 func (s *giveawayTestSuite) setupSuiteStartService() {
@@ -64,12 +75,12 @@ func (s *giveawayTestSuite) setupSuiteStartService() {
 	s.Require().NoErrorf(err, "client.New:%v", err)
 
 	srv, err := giveaway.New(c, &config.GiveawayService{
-		PrivateKey:             hexutil.Encode(crypto.FromECDSA(s.privateKey)[2:]),
+		PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
 		HandlerTotalTimeoutSec: 3,
 		SubscripTimeoutSec:     1,
 		EventLogPoolSize:       9,
-		FixedGiveawayWei:       big.NewInt(30000000000000000), // 0.003
-		MaxCapWei:              big.NewInt(60000000000000000), // 0.006
+		FixedGiveawayWei:       s.fixedGiveawayWei,
+		MaxCapWei:              s.maxCapWei,
 		TokenAddresses:         []string{s.tokenAddr.String()},
 	})
 	s.Require().NoErrorf(err, "giveaway.New:%v", err)
@@ -96,82 +107,119 @@ func (s *giveawayTestSuite) setupSuiteDeployContract() {
 
 	privateKey, err := crypto.HexToECDSA(os.Getenv("TESTING_WALLET_PRIVATE_KEY"))
 	s.Require().NoErrorf(err, "crypto.HexToECDSA:%v", err)
+	s.privateKey = privateKey
 
 	publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
 	s.Require().True(ok, "privateKey.Public().(*ecdsa.PublicKey)")
 
 	fromAddr := crypto.PubkeyToAddress(*publicKey)
-	nonce, err := c.PendingNonceAt(ctx, fromAddr)
-	s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
+	s.fromAddr = fromAddr
 
-	gasPrice, err := c.SuggestGasPrice(ctx)
-	s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
-
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, s.chainID)
-	s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
-
-	auth.Nonce = big.NewInt(0).SetUint64(nonce)
-	auth.Value = big.NewInt(0)
-	auth.GasLimit = 300000
-	auth.GasPrice = gasPrice
-
-	addr, tx, instance, err := contract.DeployContract(auth, c)
+	addr, tx, instance, err := contract.DeployContract(s.genAuth(ctx, c), c)
 	s.Require().NoErrorf(err, "contract.DeployContract:%v", err)
 
 	s.T().Logf("giveawayTestSuite, address: %v", addr)
 	s.T().Logf("giveawayTestSuite, tx: %v", tx)
 	s.instance = instance
-	s.privateKey = privateKey
 	s.tokenAddr = addr
-	s.fromAddr = fromAddr
 }
 
 func (s *giveawayTestSuite) TearDownSuite() {
 	s.serv.Close()
 }
 
+func (s *giveawayTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *bind.TransactOpts {
+	gasPrice, err := c.SuggestGasPrice(ctx)
+	s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
+
+	nonce, err := c.PendingNonceAt(ctx, s.fromAddr)
+	s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
+
+	auth, err := bind.NewKeyedTransactorWithChainID(s.privateKey, s.chainID)
+	s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
+
+	auth.Nonce = big.NewInt(0).SetUint64(nonce)
+	auth.Value = big.NewInt(0)
+	auth.GasLimit = 3000000
+	auth.GasPrice = gasPrice
+	return auth
+}
+
 func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	// total timeout for this test case
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*3)
 	defer cancel()
 
 	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
 	s.Require().NoErrorf(err, "ethclient.DialContext:%v", err)
 
-	for i := 0; i < len(s.toAddrs)-1; i++ {
-		toAddr := s.toAddrs[i]
-		gasPrice, err := c.SuggestGasPrice(ctx)
-		s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
-		nonce, err := c.PendingNonceAt(ctx, s.fromAddr)
-		s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
-
-		auth, err := bind.NewKeyedTransactorWithChainID(s.privateKey, s.chainID)
-		s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
-
-		auth.Nonce = big.NewInt(0).SetUint64(nonce)
-		auth.Value = big.NewInt(0)
-		auth.GasLimit = 300000
-		auth.GasPrice = gasPrice
-
-		tx, err := s.instance.Mint(auth, toAddr, big.NewInt(90000000000000000))
-		s.Require().NoErrorf(err, "instance.Mint:%v", err)
-		s.T().Logf("mint, toAddr:%v, tx:%v", toAddr, tx)
-
-		time.Sleep(time.Second)
-
-		balance, err := s.instance.BalanceOf(&bind.CallOpts{
-			From:    s.fromAddr,
-			Context: ctx,
-		}, toAddr)
-		s.Require().NoErrorf(err, "instance.BalanceOf:%v", err)
-		s.Require().Equal(balance, big.NewInt(30000000000000000))
+	type want struct {
+		toAddr      common.Address
+		wantBalance *big.Int
+		blockNumber *big.Int
 	}
+	wants := make([]want, 0, len(s.toAddrs))
 
-	// the last recipient should not receive the incentive because MaxCapWei is 0.006
-	balance, err := s.instance.BalanceOf(&bind.CallOpts{
-		From:    s.fromAddr,
-		Context: ctx,
-	}, s.toAddrs[len(s.toAddrs)-1])
-	s.Require().NoErrorf(err, "instance.BalanceOf:%v", err)
-	s.Require().Equal(balance, big.NewInt(0))
+	// mint demo token to the receipts
+	for j := 0; j < 2; j++ {
+		for i := 0; i < len(s.toAddrs); i++ {
+			toAddr := s.toAddrs[i]
+			tx, err := s.instance.Mint(s.genAuth(ctx, c), toAddr, big.NewInt(90000000000000000))
+			s.Require().NoErrorf(err, "instance.Mint:%v", err)
+			s.T().Logf("mint, toAddr:%v, tx:%v", toAddr, tx)
+
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+		receiptLoop:
+			for {
+				switch err {
+				case nil:
+					break receiptLoop
+				case ethereum.NotFound:
+					// skip
+				default:
+					s.Require().NoErrorf(err, "c.TransactionReceipt:%v", err)
+				}
+
+				time.Sleep(time.Second)
+				receipt, err = c.TransactionReceipt(ctx, tx.Hash())
+			}
+
+			// the last recipient should not receive the incentive because over the MaxCapWei
+			wantBalance := s.fixedGiveawayWei
+			if i == len(s.toAddrs)-1 {
+				wantBalance = big.NewInt(0)
+			}
+			wants = append(wants, want{
+				toAddr:      toAddr,
+				wantBalance: wantBalance,
+				blockNumber: receipt.BlockNumber,
+			})
+		}
+
+		for i := 0; i < len(s.toAddrs); i++ {
+			toAddr := s.toAddrs[i]
+			blockNum1 := wants[i].blockNumber
+			var blockNum2 uint64
+			var err error
+			for {
+				blockNum2, err = c.BlockNumber(ctx)
+				s.Require().NoErrorf(err, "c.BlockNumber:%v", err)
+				if blockNum1.Uint64() < blockNum2 {
+					break
+				}
+			}
+
+			gotBalance, err := c.BalanceAt(ctx, toAddr, nil)
+			s.Require().NoErrorf(err, "c.BalanceOf:%v", err)
+			s.Require().Equalf(
+				wants[i].wantBalance.Uint64(),
+				gotBalance.Uint64(),
+				"toAddr:%v, want:%v, got:%v",
+				toAddr, wants[i].wantBalance.Uint64(), gotBalance.Uint64(),
+			)
+
+			// update the expecting values for next test case
+			wants[i].blockNumber = big.NewInt(0).SetUint64(blockNum2)
+		}
+	}
 }
