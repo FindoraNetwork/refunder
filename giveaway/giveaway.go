@@ -12,7 +12,6 @@ import (
 
 	"github.com/FindoraNetwork/refunder/client"
 	"github.com/FindoraNetwork/refunder/config"
-	"github.com/FindoraNetwork/refunder/internal/workerpool"
 	"github.com/gorilla/websocket"
 
 	"github.com/ethereum/go-ethereum"
@@ -23,7 +22,6 @@ import (
 
 type Service struct {
 	client           client.Client
-	wp               *workerpool.WorkerPool
 	eventLogPoolSize int
 	done             chan struct{}
 
