@@ -41,16 +41,15 @@ type giveawayTestSuite struct {
 	blockTime        time.Duration
 	fixedGiveawayWei *big.Int
 	maxCapWei        *big.Int
-	nonce            uint64
 }
 
 func TestE2EGiveawayTestSuite(t *testing.T) {
 	suite.Run(t, &giveawayTestSuite{
 		toAddrs:          make([]common.Address, 0, 3),
-		chainID:          big.NewInt(18),
-		evmWSAddress:     "prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		chainID:          big.NewInt(2153),
+		evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
 		evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
-		blockTime:        3 * time.Second,
+		blockTime:        18 * time.Second,
 		fixedGiveawayWei: big.NewInt(3000000000000000), // 0.003
 		maxCapWei:        big.NewInt(6000000000000000), // 0.006
 	})
@@ -129,25 +128,22 @@ func (s *giveawayTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *b
 	gasPrice, err := c.SuggestGasPrice(ctx)
 	s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
 
-	if s.nonce == 0 {
-		s.nonce, err = c.PendingNonceAt(ctx, s.fromAddr)
-		s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
-	}
+	nonce, err := c.PendingNonceAt(ctx, s.fromAddr)
+	s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
 
 	auth, err := bind.NewKeyedTransactorWithChainID(s.privateKey, s.chainID)
 	s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
 
-	auth.Nonce = big.NewInt(0).SetUint64(s.nonce)
+	auth.Nonce = big.NewInt(0).SetUint64(nonce)
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = 30000000
 	auth.GasPrice = gasPrice
-	s.nonce += 1
 	return auth
 }
 
 func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	// total timeout for this test case
-	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*9)
+	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*3)
 	defer cancel()
 
 	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
@@ -184,7 +180,7 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 				    tx_hash:%v
 				    `, loop, i, toAddr, tx.Hash())
 
-			receipt, err := c.TransactionReceipt(context.Background(), tx.Hash())
+			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
 		receiptLoop:
 			for {
 				switch err {
@@ -197,7 +193,7 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 				}
 
 				time.Sleep(time.Second)
-				receipt, err = c.TransactionReceipt(context.Background(), tx.Hash())
+				receipt, err = c.TransactionReceipt(ctx, tx.Hash())
 			}
 
 			// the last recipient should not receive the incentive because over the MaxCapWei

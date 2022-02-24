@@ -132,16 +132,18 @@ func (s *Service) Start() error {
 						return
 					}
 				case err == nil:
-					// skip, this is weird, but it's real...
+					// this is weird, but it's really happening...
+					s.stdoutlogger.Println("websocket received nil error try to reconnect")
+					sub, logChan, suberr = subscribing()
+					if suberr != nil {
+						s.stderrlogger.Printf("websocket received nil error reconnect failed: %v, service stop", suberr)
+						return
+					}
 				default:
 					s.stderrlogger.Printf("subscribe websocket receive error: %v", err)
 				}
 
 			case vlog := <-logChan:
-				// we have to handle event log one by one,
-				// because current Findora Network has not implemented memory storage,
-				// so getting any pending state is meanless,
-				// and we have to maintain the nonce ourself.
 				if err := s.handler(vlog); err != nil {
 					switch err {
 					case ErrNotEligible:
@@ -184,12 +186,17 @@ func (s *Service) handler(vlog types.Log) error {
 	}
 	defer c.Close()
 
-	toBalance, err := c.BalanceAt(ctx, toAddress, blockNumber)
+	// there has an issue if specific the blockNumber
+	// BalanceAt failed: block number: 200408 exceeds version range: 1..200407
+	// so use latest blockNumber for
+	// - BalanceAt and
+	// - NonceAt
+	toBalance, err := c.BalanceAt(ctx, toAddress, nil)
 	if err != nil {
 		return fmt.Errorf("handler toAddress BalanceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
 
-	toNonce, err := c.NonceAt(ctx, toAddress, blockNumber)
+	toNonce, err := c.NonceAt(ctx, toAddress, nil)
 	if err != nil {
 		return fmt.Errorf("handler toAddress NonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
