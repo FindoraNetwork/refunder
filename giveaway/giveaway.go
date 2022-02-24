@@ -131,6 +131,8 @@ func (s *Service) Start() error {
 						s.stderrlogger.Printf("websocket.read i/o timeout reconnect failed: %v, service stop", suberr)
 						return
 					}
+				case err == nil:
+					// skip, this is weird, but it's real...
 				default:
 					s.stderrlogger.Printf("subscribe websocket receive error: %v", err)
 				}
@@ -192,7 +194,8 @@ func (s *Service) handler(vlog types.Log) error {
 		return fmt.Errorf("handler toAddress NonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
 	}
 
-	s.stdoutlogger.Printf(`handler receiving:
+	s.stdoutlogger.Printf(`
+handler receiving:
 to_address:	 %v 
 to_balance:      %v
 to_nonce:	 %v
@@ -256,5 +259,21 @@ tx_hash:	 %v
 	}
 
 	s.currentGiveoutWei = s.currentGiveoutWei.Add(s.currentGiveoutWei, s.fixedGiveawayWei)
+
+	s.stdoutlogger.Printf(`
+handler success:
+to_address:	 %v 
+block_number:	 %v
+current_giveout: %v
+current_nonce:   %v
+tx_hash:	 %v
+`,
+		toAddress,
+		blockNumber,
+		s.currentGiveoutWei,
+		nonce,
+		txHash,
+	)
+
 	return nil
 }

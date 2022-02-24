@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -30,14 +31,19 @@ type Client interface {
 }
 
 type client struct {
-	config    *config.Server
-	ethclient *ethclient.Client
+	config      *config.Server
+	rpcclient   *ethclient.Client
+	wsclient    *ethclient.Client
+	retryTimes  int
+	retryPeriod time.Duration
 }
 
 // New returns a ethclient wrapper structure and dialed a connection with the server
 func New(config *config.Server) Client {
 	return &client{
-		config: config,
+		config:      config,
+		retryTimes:  3,
+		retryPeriod: time.Microsecond,
 	}
 }
 
@@ -54,7 +60,7 @@ func (c *client) DialRPC() (Client, error) {
 		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
 	}
 
-	c.ethclient = client
+	c.rpcclient = client
 	return c, nil
 }
 
@@ -66,123 +72,338 @@ func (c *client) DialWS() (Client, error) {
 	)
 	defer cancel()
 
-	// ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546
-	// NOTE: Findora network only works on sentry node and no TLS supported
 	client, err := ethclient.DialContext(dialTimeout, c.config.ServerWSAddress)
 	if err != nil {
 		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
 	}
 
-	c.ethclient = client
+	c.wsclient = client
 	return c, nil
 }
 
+var ErrDialFirst = errors.New("client instance is nil, call dial function first")
+
 // BlockByHash calls the ethclient.BlockByHash directly
-func (c *client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	return c.ethclient.BlockByHash(ctx, hash)
+func (c *client) BlockByHash(ctx context.Context, hash common.Hash) (v *types.Block, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.BlockByHash(ctx, hash)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // BlockByNumber calls the ethclient.BlockByNumber directly
-func (c *client) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return c.ethclient.BlockByNumber(ctx, number)
+func (c *client) BlockByNumber(ctx context.Context, number *big.Int) (v *types.Block, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.BlockByNumber(ctx, number)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // HeaderByHash calls the ethclient.HeaderByHash directly
-func (c *client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
-	return c.ethclient.HeaderByHash(ctx, hash)
+func (c *client) HeaderByHash(ctx context.Context, hash common.Hash) (v *types.Header, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.HeaderByHash(ctx, hash)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // HeaderByNumber calls the ethclient.HeaderByNumber directly
-func (c *client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
-	return c.ethclient.HeaderByNumber(ctx, number)
+func (c *client) HeaderByNumber(ctx context.Context, number *big.Int) (v *types.Header, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.HeaderByNumber(ctx, number)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // TransactionCount calls the ethclient.TransactionCount directly
-func (c *client) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
-	return c.ethclient.TransactionCount(ctx, blockHash)
+func (c *client) TransactionCount(ctx context.Context, blockHash common.Hash) (v uint, err error) {
+	if c.rpcclient == nil {
+		return 0, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.TransactionCount(ctx, blockHash)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // TransactionInBlock calls the ethclient.TransactionInBlock directly
-func (c *client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
-	return c.ethclient.TransactionInBlock(ctx, blockHash, index)
+func (c *client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (v *types.Transaction, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.TransactionInBlock(ctx, blockHash, index)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // SubscribeNewHead calls the ethclient.SubscribeNewHead directly
-func (c *client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error) {
-	return c.ethclient.SubscribeNewHead(ctx, ch)
+func (c *client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (v ethereum.Subscription, err error) {
+	if c.wsclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.wsclient.SubscribeNewHead(ctx, ch)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // BalanceAt calls the ethclient.BalanceAt directly
-func (c *client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
-	return c.ethclient.BalanceAt(ctx, account, blockNumber)
+func (c *client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (v *big.Int, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.BalanceAt(ctx, account, blockNumber)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // StorageAt calls the ethclient.StorageAt directly
-func (c *client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
-	return c.ethclient.StorageAt(ctx, account, key, blockNumber)
+func (c *client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) (v []byte, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.StorageAt(ctx, account, key, blockNumber)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // CodeAt calls the ethclient.CodeAt directly
-func (c *client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
-	return c.ethclient.CodeAt(ctx, account, blockNumber)
+func (c *client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) (v []byte, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.CodeAt(ctx, account, blockNumber)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // NonceAt calls the ethclient.NonceAt directly
-func (c *client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
-	return c.ethclient.NonceAt(ctx, account, blockNumber)
+func (c *client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (v uint64, err error) {
+	if c.rpcclient == nil {
+		return 0, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.NonceAt(ctx, account, blockNumber)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // NetworkID calls the ethclient.NetworkID directly
-func (c *client) NetworkID(ctx context.Context) (*big.Int, error) {
-	return c.ethclient.NetworkID(ctx)
+func (c *client) NetworkID(ctx context.Context) (v *big.Int, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.NetworkID(ctx)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // Close calls the ethclient.Close directly
 func (c *client) Close() {
-	c.ethclient.Close()
+	if c.rpcclient != nil {
+		c.rpcclient.Close()
+	}
+	if c.wsclient != nil {
+		c.wsclient.Close()
+	}
 }
 
 // FilterLogs calls the ethclient.FilterLogs directly
-func (c *client) FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
-	return c.ethclient.FilterLogs(ctx, q)
+func (c *client) FilterLogs(ctx context.Context, q ethereum.FilterQuery) (v []types.Log, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.FilterLogs(ctx, q)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // SubscribeFilterLogs calls the ethclient.SubscribeFilterLogs directly
-func (c *client) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error) {
-	return c.ethclient.SubscribeFilterLogs(ctx, q, ch)
+func (c *client) SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (v ethereum.Subscription, err error) {
+	if c.wsclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.wsclient.SubscribeFilterLogs(ctx, q, ch)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // SendTransaction calls the ethclient.SendTransaction directly
-func (c *client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
-	return c.ethclient.SendTransaction(ctx, tx)
+func (c *client) SendTransaction(ctx context.Context, tx *types.Transaction) (err error) {
+	if c.rpcclient == nil {
+		return ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		err = c.rpcclient.SendTransaction(ctx, tx)
+		if err == nil {
+			return nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // PendingBalanceAt calls the ethclient.PendingBalanceAt directly
-func (c *client) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
-	return c.ethclient.PendingBalanceAt(ctx, account)
+func (c *client) PendingBalanceAt(ctx context.Context, account common.Address) (v *big.Int, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.PendingBalanceAt(ctx, account)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // PendingStorageAt calls the ethclient.PendingStorageAt directly
-func (c *client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
-	return c.ethclient.PendingStorageAt(ctx, account, key)
+func (c *client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) (v []byte, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.PendingStorageAt(ctx, account, key)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // PendingCodeAt calls the ethclient.PendingCodeAt directly
-func (c *client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
-	return c.ethclient.PendingCodeAt(ctx, account)
+func (c *client) PendingCodeAt(ctx context.Context, account common.Address) (v []byte, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.PendingCodeAt(ctx, account)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // PendingNonceAt calls the ethclient.PendingNonceAt directly
-func (c *client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
-	return c.ethclient.PendingNonceAt(ctx, account)
+func (c *client) PendingNonceAt(ctx context.Context, account common.Address) (v uint64, err error) {
+	if c.rpcclient == nil {
+		return 0, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.PendingNonceAt(ctx, account)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // PendingTransactionCount calls the ethclient.PendingTransactionCount directly
-func (c *client) PendingTransactionCount(ctx context.Context) (uint, error) {
-	return c.ethclient.PendingTransactionCount(ctx)
+func (c *client) PendingTransactionCount(ctx context.Context) (v uint, err error) {
+	if c.rpcclient == nil {
+		return 0, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.PendingTransactionCount(ctx)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // SuggestGasPrice calls the ethclient.SuggestGasPrice directly
-func (c *client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return c.ethclient.SuggestGasPrice(ctx)
+func (c *client) SuggestGasPrice(ctx context.Context) (v *big.Int, err error) {
+	if c.rpcclient == nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.SuggestGasPrice(ctx)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }

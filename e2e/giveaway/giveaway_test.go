@@ -41,18 +41,16 @@ type giveawayTestSuite struct {
 	blockTime        time.Duration
 	fixedGiveawayWei *big.Int
 	maxCapWei        *big.Int
+	nonce            uint64
 }
 
 func TestE2EGiveawayTestSuite(t *testing.T) {
 	suite.Run(t, &giveawayTestSuite{
-		toAddrs: make([]common.Address, 0, 3),
-		// chainID:          big.NewInt(2153),
-		// evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
-		// evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
+		toAddrs:          make([]common.Address, 0, 3),
 		chainID:          big.NewInt(18),
-		evmWSAddress:     "wss://testnet-ws.thundercore.com",
-		evmPRCAddress:    "https://testnet-rpc.thundercore.com",
-		blockTime:        16 * time.Second,
+		evmWSAddress:     "prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		evmPRCAddress:    "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
+		blockTime:        3 * time.Second,
 		fixedGiveawayWei: big.NewInt(3000000000000000), // 0.003
 		maxCapWei:        big.NewInt(6000000000000000), // 0.006
 	})
@@ -61,13 +59,10 @@ func TestE2EGiveawayTestSuite(t *testing.T) {
 func (s *giveawayTestSuite) SetupSuite() {
 	// Step 1. deploy a token creation contract to do the transfer action
 	s.setupSuiteDeployContract()
-	s.T().Log("setupSuiteDeployContract done")
 	// Step 2. generate three destination wallets
 	s.setupSuiteGenerateWallets()
-	s.T().Log("setupSuiteGenerateWallets done")
 	// Step 3. start giveaway service
 	s.setupSuiteStartService()
-	s.T().Log("setupSuiteStartService done")
 }
 
 func (s *giveawayTestSuite) setupSuiteStartService() {
@@ -123,8 +118,7 @@ func (s *giveawayTestSuite) setupSuiteDeployContract() {
 	s.instance = instance
 	s.tokenAddr = addr
 
-	s.T().Logf("giveawayTestSuite, address: %v", addr)
-	s.T().Logf("giveawayTestSuite, tx: %v", tx)
+	s.T().Logf("giveawayTestSuite, contract address: %v, tx_hash: %v", addr, tx.Hash())
 }
 
 func (s *giveawayTestSuite) TearDownSuite() {
@@ -135,22 +129,25 @@ func (s *giveawayTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *b
 	gasPrice, err := c.SuggestGasPrice(ctx)
 	s.Require().NoErrorf(err, "c.SuggestGasPrice:%v", err)
 
-	nonce, err := c.PendingNonceAt(ctx, s.fromAddr)
-	s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
+	if s.nonce == 0 {
+		s.nonce, err = c.PendingNonceAt(ctx, s.fromAddr)
+		s.Require().NoErrorf(err, "c.PendingNonceAt:%v", err)
+	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(s.privateKey, s.chainID)
 	s.Require().NoErrorf(err, "bind.NewKeyedTransactorWithChainID:%v", err)
 
-	auth.Nonce = big.NewInt(0).SetUint64(nonce)
+	auth.Nonce = big.NewInt(0).SetUint64(s.nonce)
 	auth.Value = big.NewInt(0)
 	auth.GasLimit = 30000000
 	auth.GasPrice = gasPrice
+	s.nonce += 1
 	return auth
 }
 
 func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	// total timeout for this test case
-	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*3)
+	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*9)
 	defer cancel()
 
 	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
@@ -164,14 +161,30 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	wants := make([]want, 0, len(s.toAddrs))
 
 	// mint demo token to the receipts
-	for j := 0; j < 2; j++ {
+	for loop := 0; loop < 2; loop++ {
 		for i := 0; i < len(s.toAddrs); i++ {
 			toAddr := s.toAddrs[i]
-			tx, err := s.instance.Mint(s.genAuth(ctx, c), toAddr, big.NewInt(90000000000000000))
-			s.Require().NoErrorf(err, "instance.Mint:%v", err)
-			s.T().Logf("mint, toAddr:%v, tx:%v", toAddr, tx)
 
-			receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+			// add a simple retry here
+			tx, err := s.instance.Mint(s.genAuth(ctx, c), toAddr, big.NewInt(90000000000000000))
+			if err != nil {
+				for i := 0; i < 3; i++ {
+					tx, err = s.instance.Mint(s.genAuth(ctx, c), toAddr, big.NewInt(90000000000000000))
+					if err == nil {
+						break
+					}
+				}
+			}
+			s.Require().NoErrorf(err, "instance.Mint:%v", err)
+
+			s.T().Logf(`
+				    Test_E2E_Giveaway
+				    [%d]mint(%d) 
+				    toAddr:%v 
+				    tx_hash:%v
+				    `, loop, i, toAddr, tx.Hash())
+
+			receipt, err := c.TransactionReceipt(context.Background(), tx.Hash())
 		receiptLoop:
 			for {
 				switch err {
@@ -184,7 +197,7 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 				}
 
 				time.Sleep(time.Second)
-				receipt, err = c.TransactionReceipt(ctx, tx.Hash())
+				receipt, err = c.TransactionReceipt(context.Background(), tx.Hash())
 			}
 
 			// the last recipient should not receive the incentive because over the MaxCapWei
@@ -217,8 +230,8 @@ func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 			s.Require().Equalf(
 				wants[i].wantBalance.Uint64(),
 				gotBalance.Uint64(),
-				"toAddr:%v, want:%v, got:%v",
-				toAddr, wants[i].wantBalance.Uint64(), gotBalance.Uint64(),
+				"[%d](%d) toAddr:%v, want:%v, got:%v",
+				loop, i, toAddr, wants[i].wantBalance.Uint64(), gotBalance.Uint64(),
 			)
 		}
 	}
