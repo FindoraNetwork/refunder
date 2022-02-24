@@ -1,13 +1,15 @@
-package giveaway_test
+package gasfee_test
 
 import (
 	"encoding/hex"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/FindoraNetwork/refunder/client"
 	"github.com/FindoraNetwork/refunder/config"
-	"github.com/FindoraNetwork/refunder/giveaway"
+	"github.com/FindoraNetwork/refunder/gasfee"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
@@ -15,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/stretchr/testify/assert"
 )
 
 func setup(t *testing.T) (client.Client, string) {
@@ -43,14 +44,16 @@ func setup(t *testing.T) (client.Client, string) {
 	}, hex.EncodeToString(math.PaddedBigBytes(priv.D, priv.Params().BitSize/8))
 }
 
-func Test_GiveawayService(t *testing.T) {
+func Test_GasfeeService(t *testing.T) {
 	client, privateKey := setup(t)
-	service, err := giveaway.New(client, &config.GiveawayService{
-		PrivateKey:             privateKey,
-		HandlerTotalTimeoutSec: 3,
-		SubscripTimeoutSec:     3,
-		EventLogPoolSize:       3,
-		TokenAddresses:         []string{"0x49C86Ee3Aca6ADE64127FA170445cd0B97CBBd4c"},
+	service, err := gasfee.New(client, &config.GasfeeService{
+		PrivateKey:              privateKey,
+		CrawleInEveryMinutes:    3,
+		RefundEveryDayAt:        time.Now().UTC().Add(3 * time.Second),
+		TokenAddresses:          []string{},
+		RefunderTotalTimeoutSec: 3,
+		CrawlerTotalTimeoutSec:  3,
+		RefundThreshold:         big.NewInt(3),
 	})
 	assert.NoError(t, err)
 	service.Close()

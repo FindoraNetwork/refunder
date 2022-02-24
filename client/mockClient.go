@@ -22,6 +22,18 @@ func (c *MockClient) DialWS() (Client, error) {
 	return c, nil
 }
 
+func (c *MockClient) TransactionByHash(ctx context.Context, txHash common.Hash) (tx *types.Transaction, isPending bool, err error) {
+	return
+}
+
+func (c *MockClient) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	return nil, nil
+}
+
+func (c *MockClient) BlockNumber(context.Context) (uint64, error) {
+	return 0, nil
+}
+
 func (c *MockClient) NetworkID(ctx context.Context) (*big.Int, error) {
 	return nil, nil
 }

@@ -33,12 +33,20 @@ type GasfeeService struct {
 	// RefundEveryDayAt specific a time in RFC 3339 format which takes the HH:MM:SS only
 	// and will using 24 hours as it's period
 	RefundEveryDayAt time.Time `json:"refund_every_day_at"`
+	// TokenAddresses is the address of tokens gonna to filtering to incentive
+	TokenAddresses []string `json:"token_addresses"`
+	// RefunderTotalTimeoutSec is the timeout second for all operations in the refunder function
+	RefunderTotalTimeoutSec uint `json:"refunder_total_timeout_sec"`
+	// CrawlerTotalTimeoutSec is the timeout second for all operations in the crawler function
+	CrawlerTotalTimeoutSec uint `json:"crawler_total_timeout_sec"`
+	// RefundThreshold defines the transaction refunding threshold
+	RefundThreshold *big.Int `json:"refund_threshold"`
 }
 
 type GiveawayService struct {
 	// PrivateKey for the founding source
 	PrivateKey string `json:"private_key"`
-	// HandlerTotalTimeoutSec is the timeout second for all operations int the handle function
+	// HandlerTotalTimeoutSec is the timeout second for all operations in the handle function
 	HandlerTotalTimeoutSec uint `json:"handler_operations_timeout_sec"`
 	// SubscripTimeoutSec is the timeout second for dialing and subscribing to the server
 	SubscripTimeoutSec uint `json:"subscrip_timeout_sec"`

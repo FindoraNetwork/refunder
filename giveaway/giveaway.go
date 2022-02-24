@@ -43,7 +43,7 @@ type Service struct {
 func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 	privateKey, err := crypto.HexToECDSA(conf.PrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("new on crypto.HexToECDSA private key failed: %w", err)
+		return nil, fmt.Errorf("new on crypto.HexToECDSA private key failed:%w", err)
 	}
 
 	publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
@@ -79,7 +79,7 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 	}
 
 	if err := s.Start(); err != nil {
-		return nil, fmt.Errorf("new on starting service failed: %w", err)
+		return nil, fmt.Errorf("new on starting service failed:%w", err)
 	}
 
 	return s, nil
@@ -90,7 +90,7 @@ func (s *Service) Start() error {
 	subscribing := func() (ethereum.Subscription, chan types.Log, error) {
 		c, err := s.client.DialWS()
 		if err != nil {
-			return nil, nil, fmt.Errorf("start dialing to server failed: %w", err)
+			return nil, nil, fmt.Errorf("start dialing to server failed:%w", err)
 		}
 
 		logChan := make(chan types.Log, s.eventLogPoolSize)
@@ -99,7 +99,7 @@ func (s *Service) Start() error {
 
 		sub, err := c.SubscribeFilterLogs(ctx, s.filterQuery, logChan)
 		if err != nil {
-			return nil, nil, fmt.Errorf("subscribe filter logs failed: %w", err)
+			return nil, nil, fmt.Errorf("subscribe filter logs failed:%w", err)
 		}
 		return sub, logChan, nil
 	}
@@ -121,14 +121,14 @@ func (s *Service) Start() error {
 					s.stdoutlogger.Println("websocket.CloseAbnormalClosure try to reconnect")
 					sub, logChan, suberr = subscribing()
 					if suberr != nil {
-						s.stderrlogger.Printf("websocket.CloseAbnormalClosure reconnect failed: %v, service stop", suberr)
+						s.stderrlogger.Printf("websocket.CloseAbnormalClosure reconnect failed:%v, service stop", suberr)
 						return
 					}
 				case os.IsTimeout(err):
 					s.stdoutlogger.Println("websocket.read i/o timeout try to reconnect")
 					sub, logChan, suberr = subscribing()
 					if suberr != nil {
-						s.stderrlogger.Printf("websocket.read i/o timeout reconnect failed: %v, service stop", suberr)
+						s.stderrlogger.Printf("websocket.read i/o timeout reconnect failed:%v, service stop", suberr)
 						return
 					}
 				case err == nil:
@@ -136,11 +136,11 @@ func (s *Service) Start() error {
 					s.stdoutlogger.Println("websocket received nil error try to reconnect")
 					sub, logChan, suberr = subscribing()
 					if suberr != nil {
-						s.stderrlogger.Printf("websocket received nil error reconnect failed: %v, service stop", suberr)
+						s.stderrlogger.Printf("websocket received nil error reconnect failed:%v, service stop", suberr)
 						return
 					}
 				default:
-					s.stderrlogger.Printf("subscribe websocket receive error: %v", err)
+					s.stderrlogger.Printf("subscribe websocket receive error:%v", err)
 				}
 
 			case vlog := <-logChan:
@@ -174,7 +174,7 @@ func (s *Service) handler(vlog types.Log) error {
 	txHash := vlog.TxHash.String()
 
 	if len(vlog.Topics) != 3 {
-		return fmt.Errorf("handler receive not expecting format on topics: %v, tx_hash:%s", vlog.Topics, txHash)
+		return fmt.Errorf("handler receive not expecting format on topics:%v, tx_hash:%s", vlog.Topics, txHash)
 	}
 
 	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
@@ -182,7 +182,7 @@ func (s *Service) handler(vlog types.Log) error {
 
 	c, err := s.client.DialRPC()
 	if err != nil {
-		return fmt.Errorf("handler client dialing failed: %v, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler client dialing failed:%w, tx_hash:%s", err, txHash)
 	}
 	defer c.Close()
 
@@ -193,12 +193,12 @@ func (s *Service) handler(vlog types.Log) error {
 	// - NonceAt
 	toBalance, err := c.BalanceAt(ctx, toAddress, nil)
 	if err != nil {
-		return fmt.Errorf("handler toAddress BalanceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
+		return fmt.Errorf("handler toAddress BalanceAt failed:%w, tx_hash:%s, to_address:%s", err, txHash, toAddress)
 	}
 
 	toNonce, err := c.NonceAt(ctx, toAddress, nil)
 	if err != nil {
-		return fmt.Errorf("handler toAddress NonceAt failed: %w, tx_hash:%s, toAddress:%v", err, txHash, toAddress)
+		return fmt.Errorf("handler toAddress NonceAt failed:%w, tx_hash:%s, to_address:%s", err, txHash, toAddress)
 	}
 
 	s.stdoutlogger.Printf(`
@@ -228,17 +228,17 @@ tx_hash:	 %v
 
 	nonce, err := c.PendingNonceAt(ctx, s.fromAddress)
 	if err != nil {
-		return fmt.Errorf("handler PendingNonceAt failed: %w, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler PendingNonceAt failed:%w, tx_hash:%s", err, txHash)
 	}
 
 	gasPrice, err := c.SuggestGasPrice(ctx)
 	if err != nil {
-		return fmt.Errorf("handler SuggestGasPrice failed: %w, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler SuggestGasPrice failed:%w, tx_hash:%s", err, txHash)
 	}
 
 	chainID, err := c.NetworkID(ctx)
 	if err != nil {
-		return fmt.Errorf("handler NetworkID failed: %w, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler NetworkID failed:%w, tx_hash:%s", err, txHash)
 	}
 
 	tx, err := types.SignTx(
@@ -258,11 +258,11 @@ tx_hash:	 %v
 		s.privateKey,
 	)
 	if err != nil {
-		return fmt.Errorf("handler SignTx failed: %w, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler SignTx failed:%w, tx_hash:%s", err, txHash)
 	}
 
 	if err := c.SendTransaction(ctx, tx); err != nil {
-		return fmt.Errorf("handler SendTransaction failed: %w, tx_hash:%s", err, txHash)
+		return fmt.Errorf("handler SendTransaction failed:%w, tx_hash:%s", err, txHash)
 	}
 
 	s.currentGiveoutWei = s.currentGiveoutWei.Add(s.currentGiveoutWei, s.fixedGiveawayWei)

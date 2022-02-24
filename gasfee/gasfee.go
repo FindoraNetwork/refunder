@@ -1,34 +1,46 @@
 package gasfee
 
 import (
+	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/FindoraNetwork/refunder/client"
 	"github.com/FindoraNetwork/refunder/config"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
 type Service struct {
-	client       client.Client
-	stdoutlogger *log.Logger
-	stderrlogger *log.Logger
-	privateKey   *ecdsa.PrivateKey
-	fromAddress  common.Address
-	done         chan struct{}
-	crawlerTick  *time.Ticker
-	refundTick   *refundTicker
+	client          client.Client
+	stdoutlogger    *log.Logger
+	stderrlogger    *log.Logger
+	privateKey      *ecdsa.PrivateKey
+	fromAddress     common.Address
+	done            chan struct{}
+	crawlerTick     *time.Ticker
+	refundTick      *refundTicker
+	filterQuery     ethereum.FilterQuery
+	refunderTimeout time.Duration
+	crawlerTimeout  time.Duration
+	curBlockNumber  uint64
+	refundThreshold *big.Int
+	prices          *sync.Map
 }
 
 func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 	privateKey, err := crypto.HexToECDSA(conf.PrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("new on crypto.HexToECDSA private key failed: %w", err)
+		return nil, fmt.Errorf("new on crypto.HexToECDSA private key failed:%w", err)
 	}
 
 	publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
@@ -36,7 +48,12 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		return nil, fmt.Errorf("new on casting public key to ECDSA failed")
 	}
 
-	return &Service{
+	addresses := make([]common.Address, 0, len(conf.TokenAddresses))
+	for _, address := range conf.TokenAddresses {
+		addresses = append(addresses, common.HexToAddress(address))
+	}
+
+	s := &Service{
 		client:       c,
 		privateKey:   privateKey,
 		fromAddress:  crypto.PubkeyToAddress(*publicKey),
@@ -44,8 +61,22 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		stderrlogger: log.New(os.Stderr, "gasfeeService:", log.Lmsgprefix),
 		done:         make(chan struct{}),
 		crawlerTick:  time.NewTicker(time.Duration(conf.CrawleInEveryMinutes) * time.Minute),
-		refundTick:   &refundTicker{period: 24 * time.Hour, at: conf.RefundEveryDayAt},
-	}, nil
+		filterQuery: ethereum.FilterQuery{
+			Addresses: addresses,
+			Topics: [][]common.Hash{
+				{crypto.Keccak256Hash([]byte("Transfer(address,address,uint256)"))},
+				{common.BytesToHash([]byte(""))},
+			},
+		},
+		refundTick:      &refundTicker{period: 24 * time.Hour, at: conf.RefundEveryDayAt},
+		refunderTimeout: time.Duration(conf.RefunderTotalTimeoutSec) * time.Second,
+		crawlerTimeout:  time.Duration(conf.CrawlerTotalTimeoutSec) * time.Second,
+		refundThreshold: conf.RefundThreshold,
+		prices:          &sync.Map{},
+	}
+
+	s.Start()
+	return s, nil
 }
 
 type refundTicker struct {
@@ -77,7 +108,7 @@ func (r *refundTicker) updateTimer() {
 // Start spawns two goroutines:
 // 1. a crawler ---> crawling gate.io to get the usdt price
 // 2. a refund  ---> do the refunding action to recipients
-func (s *Service) Start() error {
+func (s *Service) Start() {
 	s.refundTick.updateTimer()
 
 	go func() {
@@ -106,7 +137,6 @@ func (s *Service) Start() error {
 			}
 		}
 	}()
-	return nil
 }
 
 // Close stops the fork out goroutines from Start method
@@ -116,10 +146,125 @@ func (s *Service) Close() {
 	close(s.done)
 }
 
+var (
+	ErrTxIsPending      = errors.New("transaction is pending")
+	ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
+)
+
 func (s *Service) refunder() error {
-	_, err := s.client.DialRPC()
+	ctx, cancel := context.WithTimeout(context.Background(), s.refunderTimeout)
+	defer cancel()
+
+	c, err := s.client.DialRPC()
 	if err != nil {
-		return fmt.Errorf("refunder client.DialRPC failed: %v", err)
+		return fmt.Errorf("refunder client.DialRPC failed:%w", err)
+	}
+
+	latestBlockNumber, err := c.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("refunder c.BlockNumber failed:%w", err)
+	}
+
+	s.filterQuery.FromBlock = big.NewInt(0).SetUint64(s.curBlockNumber)
+	s.filterQuery.ToBlock = big.NewInt(0).SetUint64(latestBlockNumber)
+
+	logs, err := c.FilterLogs(ctx, s.filterQuery)
+	if err != nil {
+		return fmt.Errorf("refunder c.FilterLogs failed:%w", err)
+	}
+
+	handing := func(log *types.Log) error {
+		tx, isPending, err := c.TransactionByHash(ctx, log.TxHash)
+		if err != nil {
+			return fmt.Errorf("refunder c.TransactionByHash failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
+		}
+
+		s.stdoutlogger.Printf(`
+refunder handling:
+to_address:	%s
+tx_hash:	%s
+value:		%s
+threshold:	%s
+`, log.Address, tx.Hash(), tx.Value(), s.refundThreshold)
+
+		if isPending {
+			return ErrTxIsPending
+		}
+
+		if tx.Value().Cmp(s.refundThreshold) < 0 {
+			return ErrNotOverThreshold
+		}
+
+		nonce, err := c.PendingNonceAt(ctx, s.fromAddress)
+		if err != nil {
+			return fmt.Errorf("refunder PendingNonceAt failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+		}
+
+		gasPrice, err := c.SuggestGasPrice(ctx)
+		if err != nil {
+			return fmt.Errorf("refunder SuggestGasPrice failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+		}
+
+		chainID, err := c.NetworkID(ctx)
+		if err != nil {
+			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+		}
+
+		fraPrice, ok := s.prices.Load(chainID)
+		if !ok {
+			return fmt.Errorf("refunder get fra price not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
+		}
+		fraUSDT, ok := fraPrice.(*big.Int)
+		if !ok {
+			return fmt.Errorf("refunder cast fra usdt not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
+		}
+
+		destPrice, ok := s.prices.Load(tx.ChainId())
+		if !ok {
+			return fmt.Errorf("refunder get dest price not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
+		}
+		destUSDT, ok := destPrice.(*big.Int)
+		if !ok {
+			return fmt.Errorf("refunder cast dest usdt not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
+		}
+
+		base := big.NewInt((0.00053251 * 0.5) * 1000000000000000000)
+		fluctuation := big.NewInt(0).Div(fraUSDT, destUSDT)
+		value := base.Mul(base, fluctuation)
+		tx, err = types.SignTx(
+			types.NewTx(&types.LegacyTx{
+				Nonce: nonce,
+				// recipient address
+				To: &log.Address,
+				// wei(10^18)
+				Value: value,
+				// 21000 gas is the default value for transfering native token
+				Gas:      uint64(21000),
+				GasPrice: gasPrice,
+				// 0x data is the default value for transfering native token
+				Data: nil,
+			}),
+			types.NewEIP155Signer(chainID),
+			s.privateKey,
+		)
+		if err != nil {
+			return fmt.Errorf("refunder SignTx failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+		}
+
+		if err := c.SendTransaction(ctx, tx); err != nil {
+			return fmt.Errorf("refunder SendTransaction failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+		}
+
+		return nil
+	}
+
+	for _, log := range logs {
+		if err := handing(&log); err != nil {
+			switch err {
+			default:
+				s.stderrlogger.Println(err)
+			}
+		}
 	}
 
 	return nil

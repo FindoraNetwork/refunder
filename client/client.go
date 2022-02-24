@@ -22,8 +22,10 @@ type Client interface {
 	DialRPC() (Client, error)
 	NetworkID(context.Context) (*big.Int, error)
 	Close()
+	BlockNumber(context.Context) (uint64, error)
 	ethereum.LogFilterer
 	ethereum.TransactionSender
+	ethereum.TransactionReader
 	ethereum.ChainStateReader
 	ethereum.PendingStateReader
 	ethereum.GasPricer
@@ -79,6 +81,49 @@ func (c *client) DialWS() (Client, error) {
 
 	c.wsclient = client
 	return c, nil
+}
+
+func (c *client) TransactionByHash(ctx context.Context, txHash common.Hash) (tx *types.Transaction, isPending bool, err error) {
+	if c.rpcclient != nil {
+		return nil, true, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		tx, isPending, err = c.rpcclient.TransactionByHash(ctx, txHash)
+		if err == nil {
+			return
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
+}
+
+func (c *client) TransactionReceipt(ctx context.Context, txHash common.Hash) (v *types.Receipt, err error) {
+	if c.rpcclient != nil {
+		return nil, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.TransactionReceipt(ctx, txHash)
+		if err == nil {
+			return
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
+}
+
+// BlockNumber calls the ethclient.BlockNumber directly
+func (c *client) BlockNumber(ctx context.Context) (v uint64, err error) {
+	if c.rpcclient != nil {
+		return 0, ErrDialFirst
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = c.rpcclient.BlockNumber(ctx)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 var ErrDialFirst = errors.New("client instance is nil, call dial function first")
