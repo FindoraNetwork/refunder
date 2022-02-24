@@ -58,8 +58,8 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 
 	s := &Service{
 		client:              c,
-		stdoutlogger:        log.New(os.Stdout, "giveawayService: ", log.Lmsgprefix),
-		stderrlogger:        log.New(os.Stderr, "giveawayService: ", log.Lmsgprefix),
+		stdoutlogger:        log.New(os.Stdout, "giveawayService:", log.Lmsgprefix),
+		stderrlogger:        log.New(os.Stderr, "giveawayService:", log.Lmsgprefix),
 		done:                make(chan struct{}),
 		subscribeTimeout:    time.Duration(conf.SubscripTimeoutSec) * time.Second,
 		handlerTotalTimeout: time.Duration(conf.HandlerTotalTimeoutSec) * time.Second,

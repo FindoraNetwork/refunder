@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"time"
 )
 
 type Config struct {
@@ -22,6 +23,16 @@ type Server struct {
 	ServerWSAddress string `json:"server_ws_address"`
 	// the http server address with port number
 	ServerRPCAddress string `json:"server_rpc_address"`
+}
+
+type GasfeeService struct {
+	// PrivateKey for the founding source
+	PrivateKey string `json:"private_key"`
+	// CrawleInEveryMinutes specific a time period to crawle the gate.io information
+	CrawleInEveryMinutes uint `json:"crawle_in_every_minutes"`
+	// RefundEveryDayAt specific a time in RFC 3339 format which takes the HH:MM:SS only
+	// and will using 24 hours as it's period
+	RefundEveryDayAt time.Time `json:"refund_every_day_at"`
 }
 
 type GiveawayService struct {
