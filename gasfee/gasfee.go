@@ -38,6 +38,8 @@ type Service struct {
 	crawlerTimeout  time.Duration
 	curBlockNumber  uint64
 	refundThreshold *big.Float
+	refundMaxCapWei *big.Int
+	refundedWei     *big.Int
 	prices          *prices
 	crawlingAddr    string
 	fraTokenAddr    common.Address
@@ -106,6 +108,8 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		mapper:          mapper,
 		curBlockNumber:  conf.RefunderStartBlockNumber,
 		blockInterval:   conf.RefunderScrapBlockStep,
+		refundMaxCapWei: conf.RefundMaxCapWei,
+		refundedWei:     big.NewInt(0),
 	}
 
 	s.resetPrices()
@@ -266,9 +270,11 @@ fra_price:		%s
 target_price:		%s
 transfered_token:	%s
 transfered_price:	%s
-`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, transferedToken, transferedPrice)
+refunded_wei:		%s
+refund_max_cap_wei:	%s
+`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, transferedToken, transferedPrice, s.refundedWei, s.refundMaxCapWei)
 
-		if transferedPrice.Cmp(s.refundThreshold) <= 0 {
+		if transferedPrice.Cmp(s.refundThreshold) <= 0 || s.refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
 			return ErrNotOverThreshold
 		}
 
@@ -313,6 +319,8 @@ transfered_price:	%s
 		if err := c.SendTransaction(ctx, tx); err != nil {
 			return fmt.Errorf("refunder SendTransaction failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
 		}
+
+		s.refundedWei = s.refundedWei.Add(s.refundedWei, refundValue)
 
 		s.stdoutlogger.Printf(`
 refunder success:

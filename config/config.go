@@ -44,6 +44,9 @@ type GasfeeService struct {
 	// RefundThreshold defines the transaction refunding threshold
 	// In USDT as unit currently
 	RefundThreshold *big.Float `json:"refund_threshold"`
+	// RefundMaxCapWei is the total maximum incentive amount in Wei
+	// Like 20000 FRA = 20000000000000000000000 wei
+	RefundMaxCapWei *big.Int
 	// CrawlingAddress is the target address to crawle
 	CrawlingAddress string `json:"crawling_address"`
 	// CrawlingMapper defines the crawling target and its own settings
