@@ -50,10 +50,9 @@ func Test_GasfeeService(t *testing.T) {
 		PrivateKey:              privateKey,
 		CrawleInEveryMinutes:    3,
 		RefundEveryDayAt:        time.Now().UTC().Add(3 * time.Second),
-		TokenAddresses:          []string{},
 		RefunderTotalTimeoutSec: 3,
 		CrawlerTotalTimeoutSec:  3,
-		RefundThreshold:         big.NewInt(3),
+		RefundThreshold:         big.NewFloat(3),
 	})
 	assert.NoError(t, err)
 	service.Close()

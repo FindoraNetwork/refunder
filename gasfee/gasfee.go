@@ -132,12 +132,6 @@ type prices struct {
 	values map[common.Address]*big.Float
 }
 
-func (p *prices) set(k common.Address, v float64) {
-	p.mux.Lock()
-	defer p.mux.Unlock()
-	p.values[k] = big.NewFloat(v)
-}
-
 func (p *prices) get(k common.Address) *big.Float {
 	p.mux.RLock()
 	defer p.mux.RUnlock()
@@ -368,15 +362,6 @@ refund_value:		%s
 		return fmt.Errorf(strings.Join(errs, "\n"))
 	}
 	return nil
-}
-
-type price struct {
-	UnixTimestamp uint
-	Volume        float64
-	Close         float64
-	Highest       float64
-	Lowest        float64
-	Open          float64
 }
 
 // https://www.gate.io/docs/apiv4/en/#market-candlesticks
