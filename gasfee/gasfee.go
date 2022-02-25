@@ -342,6 +342,9 @@ refund_value:		%s
 			curBlockNumber -= curBlockNumber - latestBlockNumber
 		}
 		s.filterQuery.ToBlock = big.NewInt(0).SetUint64(curBlockNumber)
+		// avoiding the next fromBlock repeat with the current toBlock
+		curBlockNumber += 1
+		n += 1
 
 		logs, err := c.FilterLogs(ctx, s.filterQuery)
 		if err != nil {
