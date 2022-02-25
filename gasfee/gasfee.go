@@ -3,11 +3,15 @@ package gasfee
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"math/big"
+	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,8 +37,18 @@ type Service struct {
 	refunderTimeout time.Duration
 	crawlerTimeout  time.Duration
 	curBlockNumber  uint64
-	refundThreshold *big.Int
-	prices          *sync.Map
+	refundThreshold *big.Float
+	prices          *prices
+	crawlingAddr    string
+	fraTokenAddr    common.Address
+	mapper          map[common.Address]*crawlingMate
+	blockInterval   int
+}
+
+type crawlingMate struct {
+	priceKind    config.PriceKind
+	currencyPair config.CurrencyPair
+	decimal      int
 }
 
 func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
@@ -48,9 +62,23 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		return nil, fmt.Errorf("new on casting public key to ECDSA failed")
 	}
 
-	addresses := make([]common.Address, 0, len(conf.TokenAddresses))
-	for _, address := range conf.TokenAddresses {
-		addresses = append(addresses, common.HexToAddress(address))
+	mapper := make(map[common.Address]*crawlingMate)
+	addresses := make([]common.Address, 0, len(conf.CrawlingMapper))
+	var fraTokenAddr common.Address
+
+	for currencyPair, mate := range conf.CrawlingMapper {
+		tokenAddr := common.HexToAddress(mate.TokenAddress)
+		addresses = append(addresses, tokenAddr)
+
+		mapper[tokenAddr] = &crawlingMate{
+			priceKind:    mate.PriceKind,
+			currencyPair: currencyPair,
+			decimal:      mate.Decimal,
+		}
+
+		if currencyPair == config.CurrencyPair("FRA_USDT") {
+			fraTokenAddr = tokenAddr
+		}
 	}
 
 	s := &Service{
@@ -72,11 +100,67 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refunderTimeout: time.Duration(conf.RefunderTotalTimeoutSec) * time.Second,
 		crawlerTimeout:  time.Duration(conf.CrawlerTotalTimeoutSec) * time.Second,
 		refundThreshold: conf.RefundThreshold,
-		prices:          &sync.Map{},
+		prices:          &prices{mux: new(sync.RWMutex)},
+		crawlingAddr:    conf.CrawlingAddress,
+		fraTokenAddr:    fraTokenAddr,
+		mapper:          mapper,
+		curBlockNumber:  conf.RefunderStartBlockNumber,
+		blockInterval:   conf.RefunderScrapBlockStep,
 	}
 
+	s.resetPrices()
 	s.Start()
 	return s, nil
+}
+
+func (s *Service) resetPrices() {
+	s.prices.mux.Lock()
+	defer s.prices.mux.Unlock()
+
+	for tokenAddr, mate := range s.mapper {
+		switch mate.priceKind {
+		case config.Highest:
+			s.prices.values[tokenAddr] = big.NewFloat(math.SmallestNonzeroFloat64)
+		case config.Lowest:
+			s.prices.values[tokenAddr] = big.NewFloat(math.MaxFloat64)
+		}
+	}
+}
+
+type prices struct {
+	mux    *sync.RWMutex
+	values map[common.Address]*big.Float
+}
+
+func (p *prices) set(k common.Address, v float64) {
+	p.mux.Lock()
+	defer p.mux.Unlock()
+	p.values[k] = big.NewFloat(v)
+}
+
+func (p *prices) get(k common.Address) *big.Float {
+	p.mux.RLock()
+	defer p.mux.RUnlock()
+	return p.values[k]
+}
+
+func (p *prices) cmpThenSet(cmpk common.Address, high, low float64, cond config.PriceKind) {
+	p.mux.Lock()
+	defer p.mux.Unlock()
+
+	curv := p.values[cmpk]
+	switch cond {
+	case config.Highest:
+		newv := big.NewFloat(high)
+		if newv.Cmp(curv) > 0 {
+			p.values[cmpk] = newv
+		}
+	case config.Lowest:
+		newv := big.NewFloat(low)
+		if newv.Cmp(curv) < 0 {
+			p.values[cmpk] = newv
+		}
+	}
 }
 
 type refundTicker struct {
@@ -134,6 +218,7 @@ func (s *Service) Start() {
 					s.stderrlogger.Println(err)
 				}
 				s.refundTick.updateTimer()
+				s.resetPrices()
 			}
 		}
 	}()
@@ -146,10 +231,7 @@ func (s *Service) Close() {
 	close(s.done)
 }
 
-var (
-	ErrTxIsPending      = errors.New("transaction is pending")
-	ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
-)
+var ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
 
 func (s *Service) refunder() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.refunderTimeout)
@@ -160,84 +242,67 @@ func (s *Service) refunder() error {
 		return fmt.Errorf("refunder client.DialRPC failed:%w", err)
 	}
 
-	latestBlockNumber, err := c.BlockNumber(ctx)
-	if err != nil {
-		return fmt.Errorf("refunder c.BlockNumber failed:%w", err)
-	}
-
-	s.filterQuery.FromBlock = big.NewInt(0).SetUint64(s.curBlockNumber)
-	s.filterQuery.ToBlock = big.NewInt(0).SetUint64(latestBlockNumber)
-
-	logs, err := c.FilterLogs(ctx, s.filterQuery)
-	if err != nil {
-		return fmt.Errorf("refunder c.FilterLogs failed:%w", err)
-	}
-
 	handing := func(log *types.Log) error {
-		tx, isPending, err := c.TransactionByHash(ctx, log.TxHash)
-		if err != nil {
-			return fmt.Errorf("refunder c.TransactionByHash failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
+		if len(log.Topics) != 3 {
+			return fmt.Errorf("refunder receive not expecting format on topics:%v, tx_hash:%s", log.Topics, log.TxHash)
 		}
+
+		value := big.NewFloat(0.0).SetInt(common.BytesToHash(log.Data).Big())
+		toAddr := common.BytesToAddress(common.TrimLeftZeroes(log.Topics[2].Bytes()))
+		mate, ok := s.mapper[log.Address]
+		if !ok {
+			return fmt.Errorf("refunder cannot find decimal from token_address:%s, tx_hash:%s", log.Address, log.TxHash)
+		}
+
+		fraPrice := s.prices.get(s.fraTokenAddr)
+		toPrice := s.prices.get(log.Address)
+
+		transferedToken := value.Quo(value, big.NewFloat(math.Pow10(mate.decimal)))
+		transferedPrice := transferedToken.Mul(transferedToken, toPrice)
 
 		s.stdoutlogger.Printf(`
 refunder handling:
-to_address:	%s
-tx_hash:	%s
-value:		%s
-threshold:	%s
-`, log.Address, tx.Hash(), tx.Value(), s.refundThreshold)
+to_address:		%s
+value:			%s
+threshold:		%s
+tx_hash:		%s
+token_address:		%s
+decimal:		%d
+fra_price:		%s
+target_price:		%s
+transfered_token:	%s
+transfered_price:	%s
+`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, transferedToken, transferedPrice)
 
-		if isPending {
-			return ErrTxIsPending
-		}
-
-		if tx.Value().Cmp(s.refundThreshold) < 0 {
+		if transferedPrice.Cmp(s.refundThreshold) <= 0 {
 			return ErrNotOverThreshold
 		}
 
 		nonce, err := c.PendingNonceAt(ctx, s.fromAddress)
 		if err != nil {
-			return fmt.Errorf("refunder PendingNonceAt failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+			return fmt.Errorf("refunder PendingNonceAt failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
 		gasPrice, err := c.SuggestGasPrice(ctx)
 		if err != nil {
-			return fmt.Errorf("refunder SuggestGasPrice failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+			return fmt.Errorf("refunder SuggestGasPrice failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
 		chainID, err := c.NetworkID(ctx)
 		if err != nil {
-			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
+			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
-		fraPrice, ok := s.prices.Load(chainID)
-		if !ok {
-			return fmt.Errorf("refunder get fra price not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
-		}
-		fraUSDT, ok := fraPrice.(*big.Int)
-		if !ok {
-			return fmt.Errorf("refunder cast fra usdt not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
-		}
-
-		destPrice, ok := s.prices.Load(tx.ChainId())
-		if !ok {
-			return fmt.Errorf("refunder get dest price not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
-		}
-		destUSDT, ok := destPrice.(*big.Int)
-		if !ok {
-			return fmt.Errorf("refunder cast dest usdt not ok:%s, tx_hash:%s, addr:%s", chainID, tx.Hash(), log.Address)
-		}
-
-		base := big.NewInt((0.00053251 * 0.5) * 1000000000000000000)
-		fluctuation := big.NewInt(0).Div(fraUSDT, destUSDT)
-		value := base.Mul(base, fluctuation)
-		tx, err = types.SignTx(
+		base := big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
+		fluctuation := fraPrice.Quo(fraPrice, toPrice)
+		refundValue, _ := base.Mul(base, fluctuation).Int(nil)
+		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,
 				// recipient address
-				To: &log.Address,
+				To: &toAddr,
 				// wei(10^18)
-				Value: value,
+				Value: refundValue,
 				// 21000 gas is the default value for transfering native token
 				Gas:      uint64(21000),
 				GasPrice: gasPrice,
@@ -255,21 +320,119 @@ threshold:	%s
 			return fmt.Errorf("refunder SendTransaction failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
 		}
 
+		s.stdoutlogger.Printf(`
+refunder success:
+to_address:		%s
+tx_hash:		%s
+token_address:		%s
+refund_tx_hash:		%s
+refund_value:		%s
+`, toAddr, log.TxHash, log.Address, tx.Hash(), refundValue)
+
 		return nil
 	}
 
-	for _, log := range logs {
-		if err := handing(&log); err != nil {
-			switch err {
-			default:
-				s.stderrlogger.Println(err)
+	latestBlockNumber, err := c.BlockNumber(ctx)
+	if err != nil {
+		return fmt.Errorf("refunder c.BlockNumber failed:%w", err)
+	}
+
+	blockNumberDiff := latestBlockNumber - s.curBlockNumber
+	curBlockNumber := s.curBlockNumber
+	var errs []string
+
+	for n := 0; n < int(blockNumberDiff); n += s.blockInterval {
+		s.filterQuery.FromBlock = big.NewInt(0).SetUint64(curBlockNumber)
+		curBlockNumber += uint64(s.blockInterval)
+		if curBlockNumber > latestBlockNumber {
+			curBlockNumber -= curBlockNumber - latestBlockNumber
+		}
+		s.filterQuery.ToBlock = big.NewInt(0).SetUint64(curBlockNumber)
+
+		logs, err := c.FilterLogs(ctx, s.filterQuery)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("refunder c.FilterLogs failed:%v", err))
+			continue
+		}
+
+		for _, log := range logs {
+			if err := handing(&log); err != nil {
+				errs = append(errs, err.Error())
 			}
 		}
 	}
 
+	s.curBlockNumber += blockNumberDiff
+
+	if errs != nil {
+		return fmt.Errorf(strings.Join(errs, "\n"))
+	}
 	return nil
 }
 
+type price struct {
+	UnixTimestamp uint
+	Volume        float64
+	Close         float64
+	Highest       float64
+	Lowest        float64
+	Open          float64
+}
+
+// https://www.gate.io/docs/apiv4/en/#market-candlesticks
 func (s *Service) crawler() error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.crawlerTimeout)
+	defer cancel()
+
+	handling := func(tokenAddr common.Address, mate *crawlingMate) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.crawlingAddr, nil)
+		if err != nil {
+			return fmt.Errorf("crawler http.NewRequestWithContext failed:%w", err)
+		}
+
+		q := req.URL.Query()
+		q.Add("currency_pair", string(mate.currencyPair))
+		q.Add("interval", "15m")
+		q.Add("limit", "1")
+
+		req.Header.Add("Accept", "application/json")
+		req.URL.RawQuery = q.Encode()
+
+		rep, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("crawler http.DefaultClient.Do failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+		}
+		defer rep.Body.Close()
+
+		// curl -H 'Accept: application/json' -X GET https://api.gateio.ws/api/v4/spot/candlesticks\?currency_pair\=FRA_USDT\&interval\=15m\&limit\=1
+		// [[unix_timestamp, trading_volume, close_price, highest_price, lowest_price, open_price]]
+		// [["1645749900","2839.79160470986265","0.01815","0.01897","0.01793","0.01889"]]
+		data := make([][]float64, 0, 1)
+		data = append(data, make([]float64, 0, 6))
+		if err := json.NewDecoder(rep.Body).Decode(&data); err != nil {
+			return fmt.Errorf("crawler FRA json decode failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+		}
+
+		if len(data) == 0 || len(data[0]) != 6 {
+			return fmt.Errorf("crawler http response not correct:%v, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+		}
+
+		high := data[0][3]
+		low := data[0][4]
+		s.prices.cmpThenSet(tokenAddr, high, low, mate.priceKind)
+
+		return nil
+	}
+
+	var errs []string
+	for tokenAddr, mate := range s.mapper {
+		if err := handling(tokenAddr, mate); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+
+	if errs != nil {
+		return fmt.Errorf(strings.Join(errs, "\n"))
+	}
 	return nil
 }

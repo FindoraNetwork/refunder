@@ -33,14 +33,48 @@ type GasfeeService struct {
 	// RefundEveryDayAt specific a time in RFC 3339 format which takes the HH:MM:SS only
 	// and will using 24 hours as it's period
 	RefundEveryDayAt time.Time `json:"refund_every_day_at"`
-	// TokenAddresses is the address of tokens gonna to filtering to incentive
-	TokenAddresses []string `json:"token_addresses"`
 	// RefunderTotalTimeoutSec is the timeout second for all operations in the refunder function
 	RefunderTotalTimeoutSec uint `json:"refunder_total_timeout_sec"`
+	// RefunderStartBlockNumber defines the the FilterQuery.FromBlock on the first time start up
+	RefunderStartBlockNumber uint64
+	// RefunderScrapBlockStep is an interval scale of the FilterQuery.ToBlock should be while querying the event logs
+	RefunderScrapBlockStep int
 	// CrawlerTotalTimeoutSec is the timeout second for all operations in the crawler function
 	CrawlerTotalTimeoutSec uint `json:"crawler_total_timeout_sec"`
 	// RefundThreshold defines the transaction refunding threshold
-	RefundThreshold *big.Int `json:"refund_threshold"`
+	// In USDT as unit currently
+	RefundThreshold *big.Float `json:"refund_threshold"`
+	// CrawlingAddress is the target address to crawle
+	CrawlingAddress string `json:"crawling_address"`
+	// CrawlingMapper defines the crawling target and its own settings
+	// example:
+	// "FRA_USDT": {
+	//	"chain_id": 2153,
+	//	"price_kind": 0
+	//      ...
+	// }
+	CrawlingMapper map[CurrencyPair]*CrawlingMate `json:"crawling_mapper"`
+}
+
+type (
+	CurrencyPair string
+	PriceKind    int
+)
+
+const (
+	// 0
+	Highest = PriceKind(iota)
+	// 1
+	Lowest
+)
+
+type CrawlingMate struct {
+	// PriceKind defines which kind of price will be stored
+	PriceKind PriceKind `json:"price_kind"`
+	// Decimal is the crawling target currency decimal number
+	Decimal int `json:"decimal"`
+	// TokenAddress is the address of the target token
+	TokenAddress string `json:"token_address"`
 }
 
 type GiveawayService struct {

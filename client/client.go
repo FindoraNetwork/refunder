@@ -84,7 +84,7 @@ func (c *client) DialWS() (Client, error) {
 }
 
 func (c *client) TransactionByHash(ctx context.Context, txHash common.Hash) (tx *types.Transaction, isPending bool, err error) {
-	if c.rpcclient != nil {
+	if c.rpcclient == nil {
 		return nil, true, ErrDialFirst
 	}
 	for i := 0; i < c.retryTimes; i++ {
@@ -98,7 +98,7 @@ func (c *client) TransactionByHash(ctx context.Context, txHash common.Hash) (tx 
 }
 
 func (c *client) TransactionReceipt(ctx context.Context, txHash common.Hash) (v *types.Receipt, err error) {
-	if c.rpcclient != nil {
+	if c.rpcclient == nil {
 		return nil, ErrDialFirst
 	}
 	for i := 0; i < c.retryTimes; i++ {
@@ -113,7 +113,7 @@ func (c *client) TransactionReceipt(ctx context.Context, txHash common.Hash) (v 
 
 // BlockNumber calls the ethclient.BlockNumber directly
 func (c *client) BlockNumber(ctx context.Context) (v uint64, err error) {
-	if c.rpcclient != nil {
+	if c.rpcclient == nil {
 		return 0, ErrDialFirst
 	}
 	for i := 0; i < c.retryTimes; i++ {
