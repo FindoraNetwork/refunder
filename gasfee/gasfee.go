@@ -68,9 +68,9 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 	addresses := make([]common.Address, 0, len(conf.CrawlingMapper))
 	var fraTokenAddr common.Address
 
-	for currencyPair, mate := range conf.CrawlingMapper {
+	for cp, mate := range conf.CrawlingMapper {
 		tokenAddr := common.HexToAddress(mate.TokenAddress)
-		addresses = append(addresses, tokenAddr)
+		currencyPair := config.CurrencyPair(strings.ToUpper(strings.TrimSpace(string(cp))))
 
 		mapper[tokenAddr] = &crawlingMate{
 			priceKind:    mate.PriceKind,
@@ -80,6 +80,8 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 
 		if currencyPair == config.CurrencyPair("FRA_USDT") {
 			fraTokenAddr = tokenAddr
+		} else {
+			addresses = append(addresses, tokenAddr)
 		}
 	}
 
