@@ -24,6 +24,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// BaseRate is the XXX base refund rate dscribed in the README
+// equals to 266255000000000 == 0.000266255000000000 wei
+var BaseRate = big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
+
 type Service struct {
 	client          client.Client
 	stdoutlogger    *log.Logger
@@ -295,9 +299,8 @@ refund_max_cap_wei:	%s
 			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
-		base := big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
 		fluctuation := fraPrice.Quo(fraPrice, toPrice)
-		refundValue, _ := base.Mul(base, fluctuation).Int(nil)
+		refundValue, _ := BaseRate.Mul(BaseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,

@@ -1,5 +1,5 @@
-// //go:build e2e
-// // +build e2e
+//go:build e2e
+// +build e2e
 
 package e2e_test
 
@@ -20,6 +20,7 @@ import (
 	"github.com/FindoraNetwork/refunder/e2e/gasfee/contract"
 	"github.com/FindoraNetwork/refunder/gasfee"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -31,30 +32,23 @@ import (
 type gasfeeTestSuite struct {
 	suite.Suite
 
-	chainID    *big.Int
-	instance   *contract.Contract
-	privateKey *ecdsa.PrivateKey
-	fromAddr   common.Address
-	tokenAddr  common.Address
-	toAddrs    []common.Address
-	serv       *gasfee.Service
-	// evmWSAddress     string
-	evmPRCAddress string
-	// blockTime        time.Duration
-	// fixedGiveawayWei *big.Int
-	// maxCapWei        *big.Int
-	gateIOServer *httptest.Server
+	chainID          *big.Int
+	instance         *contract.Contract
+	privateKey       *ecdsa.PrivateKey
+	fromAddr         common.Address
+	tokenAddr        common.Address
+	toAddrs          []common.Address
+	serv             *gasfee.Service
+	evmPRCAddress    string
+	gateIOServer     *httptest.Server
+	startBlockNumber uint64
 }
 
 func TestE2EGasfeeTestSuite(t *testing.T) {
 	suite.Run(t, &gasfeeTestSuite{
-		toAddrs: make([]common.Address, 0, 3),
-		chainID: big.NewInt(2153),
-		// evmWSAddress:     "ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		toAddrs:       make([]common.Address, 0, 3),
+		chainID:       big.NewInt(2153),
 		evmPRCAddress: "http://prod-testnet-us-west-2-full-003-open.prod.findora.org:8545",
-		// blockTime:        18 * time.Second,
-		// fixedGiveawayWei: big.NewInt(3000000000000000), // 0.003
-		// maxCapWei:        big.NewInt(6000000000000000), // 0.006
 	})
 }
 
@@ -87,6 +81,10 @@ func (s *gasfeeTestSuite) setupSuiteDeployContract() {
 
 	publicKey, ok := privateKey.Public().(*ecdsa.PublicKey)
 	s.Require().True(ok, "privateKey.Public().(*ecdsa.PublicKey)")
+
+	blockNumber, err := c.BlockNumber(ctx)
+	s.Require().NoErrorf(err, "c.BlockNumber:%v", err)
+	s.startBlockNumber = blockNumber
 
 	fromAddr := crypto.PubkeyToAddress(*publicKey)
 	s.fromAddr = fromAddr
@@ -121,9 +119,9 @@ func (s *gasfeeTestSuite) setupSuiteFakeGateIOServer() {
 		default:
 			switch r.URL.Query().Get("currency_pair") {
 			case "FRA_USDT":
-				json.NewEncoder(w).Encode(`[["1645989300","2.9303208","0.0198","0.0198","0.0198","0.0198"]]`)
+				json.NewEncoder(w).Encode(`[["1645989300","2.9303208","0.0198","0.0198","0.0196","0.0194"]]`)
 			case "DEMO_USDT":
-				json.NewEncoder(w).Encode(`[["1645989300","2.9303208","0.0198","0.0198","0.0198","0.0198"]]`)
+				json.NewEncoder(w).Encode(`[["1645995600","152072.1349971985415","361.6938","364.6027","361.3522","363.5361"]]`)
 			default:
 				w.WriteHeader(http.StatusNotAcceptable)
 			}
@@ -140,22 +138,22 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 		&config.GasfeeService{
 			PrivateKey:               strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
 			CrawleInEveryMinutes:     1,
-			RefundEveryDayAt:         time.Now().UTC().Add(3 * time.Minute),
+			RefundEveryDayAt:         time.Now().UTC().Add(time.Minute),
 			RefunderTotalTimeoutSec:  3,
-			RefunderStartBlockNumber: 0,
+			RefunderStartBlockNumber: s.startBlockNumber,
 			RefunderScrapBlockStep:   200,
 			CrawlerTotalTimeoutSec:   3,
-			RefundThreshold:          big.NewFloat(0),
-			RefundMaxCapWei:          big.NewInt(0),
+			RefundThreshold:          big.NewFloat(999.99),    // 999.99 USDT
+			RefundMaxCapWei:          big.NewInt(14589226245), // 0.000000014589226245 wei
 			CrawlingAddress:          s.gateIOServer.URL,
 			CrawlingMapper: map[config.CurrencyPair]*config.CrawlingMate{
 				config.CurrencyPair("FRA_USDT"): {
-					PriceKind:    config.Lowest,
+					PriceKind:    config.Highest,
 					Decimal:      6,
 					TokenAddress: "0x0000000000000000000000000000000000001000",
 				},
 				config.CurrencyPair("DEMO_USDT"): {
-					PriceKind:    config.Highest,
+					PriceKind:    config.Lowest,
 					Decimal:      6,
 					TokenAddress: s.tokenAddr.String(),
 				},
@@ -180,4 +178,120 @@ func (s *gasfeeTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *bin
 	auth.GasLimit = 30000000
 	auth.GasPrice = gasPrice
 	return auth
+}
+
+func (s *gasfeeTestSuite) Test_E2E_Gasfee() {
+	// total timeout for this test case
+	ctx, cancel := context.WithTimeout(context.Background(), 9*time.Minute)
+	defer cancel()
+
+	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
+	s.Require().NoErrorf(err, "ethclient.DialContext:%v", err)
+
+	// at mock gate.io server the Highest price of USDT
+	fraPrice := big.NewFloat(0.0198)
+	// at mock gate.io server the Lowest price of USDT
+	demoPrice := big.NewFloat(361.3522)
+	fluctuation := fraPrice.Quo(fraPrice, demoPrice)
+	// wantBalance == 14589226245 == 0.000000014589226245 wei
+	wantBalance, _ := gasfee.BaseRate.Mul(gasfee.BaseRate, fluctuation).Int(nil)
+	// 3 wei == 3 * 361.3522 USDT == 1084.0566 USDT
+	mint3wei := big.NewInt(0).SetUint64(3000000000000000000)
+	type want struct {
+		name        string
+		toAddr      common.Address
+		wantBalance *big.Int
+		blockNumber *big.Int
+		mint        *big.Int
+	}
+	wants := []want{
+		{
+			name:        "received refund",
+			wantBalance: wantBalance,
+			mint:        mint3wei,
+		},
+		{
+			name:        "block by threshold",
+			wantBalance: big.NewInt(0),
+			mint:        big.NewInt(0).SetUint64(1000000000000000000), // 1 wei == 361.3522 USDT
+		},
+		{
+			name:        "block by max cap",
+			wantBalance: big.NewInt(0),
+			mint:        mint3wei,
+		},
+	}
+
+	// let the crawler scrapes at least once
+	time.Sleep(time.Second)
+
+	// mint demo token to the receipts
+	for i := 0; i < len(s.toAddrs); i++ {
+		toAddr := s.toAddrs[i]
+		mint := wants[i].mint
+
+		// add a simple retry here
+		tx, err := s.instance.Mint(s.genAuth(ctx, c), toAddr, mint)
+		if err != nil {
+			for i := 0; i < 3; i++ {
+				tx, err = s.instance.Mint(s.genAuth(ctx, c), toAddr, mint)
+				if err == nil {
+					break
+				}
+			}
+		}
+		s.Require().NoErrorf(err, "instance.Mint:%v", err)
+
+		s.T().Logf(`
+				    Test_E2E_Gasfee
+				    (%d)mint
+				    toAddr:%v 
+				    tx_hash:%v
+				    `, i, toAddr, tx.Hash())
+
+		receipt, err := c.TransactionReceipt(ctx, tx.Hash())
+	receiptLoop:
+		for {
+			switch err {
+			case nil:
+				break receiptLoop
+			case ethereum.NotFound:
+				// skip
+			default:
+				s.Require().NoErrorf(err, "c.TransactionReceipt:%v", err)
+			}
+
+			time.Sleep(time.Second)
+			receipt, err = c.TransactionReceipt(ctx, tx.Hash())
+		}
+
+		wants[i].toAddr = toAddr
+		wants[i].blockNumber = receipt.BlockNumber
+	}
+
+	// wait for the refunder runs
+	time.Sleep(time.Minute)
+
+	for i := 0; i < len(s.toAddrs); i++ {
+		toAddr := s.toAddrs[i]
+		blockNum1 := wants[i].blockNumber
+		var blockNum2 uint64
+		var err error
+		for {
+			blockNum2, err = c.BlockNumber(ctx)
+			s.Require().NoErrorf(err, "c.BlockNumber:%v", err)
+			if blockNum1.Uint64() < blockNum2 {
+				break
+			}
+		}
+
+		gotBalance, err := c.BalanceAt(ctx, toAddr, nil)
+		s.Require().NoErrorf(err, "c.BalanceOf:%v", err)
+		s.Require().Equalf(
+			wants[i].wantBalance.Uint64(),
+			gotBalance.Uint64(),
+			"(%d)name:%s toAddr:%v, want:%s, got:%s",
+			i, wants[i].name, toAddr, wants[i].wantBalance, gotBalance,
+		)
+	}
 }
