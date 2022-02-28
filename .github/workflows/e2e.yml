@@ -6,7 +6,6 @@ jobs:
   e2e:
     name: Running End-To-End Tests
     runs-on: ubuntu-latest
-    environment: e2e
     steps:
       - uses: actions/checkout@v2
 
@@ -26,13 +25,8 @@ jobs:
 
       - uses: extractions/setup-just@v1
 
-      - name: Setup variables
-        id: vars
-        run: |
-          echo "::set-output name=pk::${{ secrets.E2E_WALLET_PRIVATE_KEY }}"
-
       - name: Running End-to-End Testings
         env:
-          TESTING_WALLET_PRIVATE_KEY: ${{ steps.vars.outputs.pk }}
+          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.ETOE_WPK }}
         run: |
           just e2e
