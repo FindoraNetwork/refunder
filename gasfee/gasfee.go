@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +109,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refunderTimeout: time.Duration(conf.RefunderTotalTimeoutSec) * time.Second,
 		crawlerTimeout:  time.Duration(conf.CrawlerTotalTimeoutSec) * time.Second,
 		refundThreshold: conf.RefundThreshold,
-		prices:          &prices{mux: new(sync.RWMutex)},
+		prices:          &prices{mux: new(sync.RWMutex), values: make(map[common.Address]*big.Float)},
 		crawlingAddr:    conf.CrawlingAddress,
 		fraTokenAddr:    fraTokenAddr,
 		mapper:          mapper,
@@ -205,6 +206,7 @@ func (s *Service) Start() {
 			case <-s.done:
 				return
 			case <-s.crawlerTick.C:
+				s.stdoutlogger.Println("crawler ticked")
 				if err := s.crawler(); err != nil {
 					s.stderrlogger.Println(err)
 				}
@@ -218,6 +220,7 @@ func (s *Service) Start() {
 			case <-s.done:
 				return
 			case <-s.refundTick.timer.C:
+				s.stdoutlogger.Println("refunder ticked")
 				if err := s.refunder(); err != nil {
 					s.stderrlogger.Println(err)
 				}
@@ -230,8 +233,14 @@ func (s *Service) Start() {
 
 // Close stops the fork out goroutines from Start method
 func (s *Service) Close() {
-	s.crawlerTick.Stop()
-	s.refundTick.timer.Stop()
+	if s.crawlerTick != nil {
+		s.crawlerTick.Stop()
+	}
+
+	if s.refundTick != nil {
+		s.refundTick.timer.Stop()
+	}
+
 	close(s.done)
 }
 
@@ -267,18 +276,16 @@ func (s *Service) refunder() error {
 		s.stdoutlogger.Printf(`
 refunder handling:
 to_address:		%s
-value:			%s
-threshold:		%s
+value:			%v
+threshold:		%v
 tx_hash:		%s
 token_address:		%s
 decimal:		%d
-fra_price:		%s
-target_price:		%s
-transfered_token:	%s
-transfered_price:	%s
+fra_price:		%v
+target_price:		%v
 refunded_wei:		%s
 refund_max_cap_wei:	%s
-`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, transferedToken, transferedPrice, s.refundedWei, s.refundMaxCapWei)
+`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, s.refundedWei, s.refundMaxCapWei)
 
 		if transferedPrice.Cmp(s.refundThreshold) <= 0 || s.refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
 			return ErrNotOverThreshold
@@ -299,8 +306,8 @@ refund_max_cap_wei:	%s
 			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
-		fluctuation := fraPrice.Quo(fraPrice, toPrice)
-		refundValue, _ := BaseRate.Mul(BaseRate, fluctuation).Int(nil)
+		fluctuation := big.NewFloat(0).Quo(fraPrice, toPrice)
+		refundValue, _ := big.NewFloat(0).Mul(BaseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,
@@ -408,18 +415,25 @@ func (s *Service) crawler() error {
 		// curl -H 'Accept: application/json' -X GET https://api.gateio.ws/api/v4/spot/candlesticks\?currency_pair\=FRA_USDT\&interval\=15m\&limit\=1
 		// [[unix_timestamp, trading_volume, close_price, highest_price, lowest_price, open_price]]
 		// [["1645749900","2839.79160470986265","0.01815","0.01897","0.01793","0.01889"]]
-		data := make([][]float64, 0, 1)
-		data = append(data, make([]float64, 0, 6))
+		data := make([][]string, 0, 1)
 		if err := json.NewDecoder(rep.Body).Decode(&data); err != nil {
-			return fmt.Errorf("crawler FRA json decode failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+			return fmt.Errorf("crawler json decode failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
 		if len(data) == 0 || len(data[0]) != 6 {
 			return fmt.Errorf("crawler http response not correct:%v, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
-		high := data[0][3]
-		low := data[0][4]
+		high, err := strconv.ParseFloat(data[0][3], 64)
+		if err != nil {
+			return fmt.Errorf("crawler parse highest price failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+		}
+
+		low, err := strconv.ParseFloat(data[0][4], 64)
+		if err != nil {
+			return fmt.Errorf("crawler parse lowest price failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
+		}
+
 		s.prices.cmpThenSet(tokenAddr, high, low, mate.priceKind)
 
 		return nil
