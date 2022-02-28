@@ -1,9 +1,7 @@
-name: Building Images
+name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
 
@@ -15,21 +13,13 @@ jobs:
     uses: ./.github/workflows/test.yml
 
   call-workflow-e2e:
-    if: ${{ startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
     uses: ./.github/workflows/e2e.yml
 
   publish:
-    name: Building Image and Publishing 
+    name: Building Image and Publishing
     needs: [call-workflow-linter, call-workflow-test, call-workflow-e2e]
-    # https://github.com/actions/runner/issues/491#issuecomment-850884422
-    # if e2e == skipped means it is a main branch pushing not tag of releasing
-    if: |
-      always() && 
-      (needs.call-workflow-linter.result == 'success') &&
-      (needs.call-workflow-test.result == 'success') &&
-      (needs.call-workflow-e2e.result == 'success' || needs.call-workflow-e2e.result == 'skipped')
     runs-on: ubuntu-latest
-    concurrency: ci-building-image
+    concurrency: ci-releasing-images
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -53,8 +43,7 @@ jobs:
         with:
           images: ghcr.io/FindoraNetwork/refunder
           tags: |
-            type=raw,value={{tag}},enable=${{ startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
-            type=raw,value={{branch}}-{{sha}}-{{date 'x'}},enable=${{ !startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
+            type=raw,value={{tag}}
             type=raw,value=latest
 
       - name: Build and push Docker image
