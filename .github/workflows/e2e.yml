@@ -30,4 +30,5 @@ jobs:
         env:
           TESTING_WALLET_PRIVATE_KEY: ${{ secrets.TESTING_WALLET_PRIVATE_KEY }}
         run: |
+          echo TESTING_WALLET_PRIVATE_KEY: '${TESTING_WALLET_PRIVATE_KEY}'
           just e2e
