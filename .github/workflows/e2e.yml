@@ -27,9 +27,12 @@ jobs:
       - uses: extractions/setup-just@v1
 
       - name: Setup variables
+        id: vars
         run: |
-          echo "TESTING_WALLET_PRIVATE_KEY=${{ secrets.E2E_WALLET_PRIVATE_KEY }}" >> $GITHUB_ENV
+          echo "::set-env name=pk::${{ secrets.E2E_WALLET_PRIVATE_KEY }}"
 
       - name: Running End-to-End Testings
+        env:
+          TESTING_WALLET_PRIVATE_KEY: ${{ steps.vars.outputs.pk }}
         run: |
           just e2e
