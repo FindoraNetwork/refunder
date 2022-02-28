@@ -23,3 +23,6 @@ vendor/
 # Solidity gen files
 *.abi
 *.bin
+
+# build out binary
+refunder

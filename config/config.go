@@ -14,6 +14,8 @@ type Config struct {
 	Server *Server `json:"server"`
 	// GiveawayService is the configuration for Type 1: Token Incentive / Giveaway service
 	GiveawayService *GiveawayService `json:"giveaway_service"`
+	// GasfeeService is the configuration for Type 2: Gas Refund
+	GasfeeService *GasfeeService `json:"gasfee_service"`
 }
 
 type Server struct {
