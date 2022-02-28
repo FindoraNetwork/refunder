@@ -27,7 +27,8 @@ jobs:
       - uses: extractions/setup-just@v1
 
       - name: Running End-to-End Testings
+        shell: bash
+        env:
+          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
         run: |
-          export TESTING_WALLET_PRIVATE_KEY=${{ secrets.E2E_WALLET_PRIVATE_KEY }}
-          env
           just e2e
