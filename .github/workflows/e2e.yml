@@ -6,6 +6,8 @@ jobs:
   e2e:
     name: Running End-To-End Tests
     runs-on: ubuntu-latest
+    env:
+      TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v2
 
@@ -26,7 +28,5 @@ jobs:
       - uses: extractions/setup-just@v1
 
       - name: Running End-to-End Testings
-        env:
-          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
         run: |
           just e2e
