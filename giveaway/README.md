@@ -1,4 +1,4 @@
-# Type 1: Token Incentive / Giveaway (0.003 FRA )
+# Type 1: Token Incentive / Giveaway ( 0.003 FRA )
 
 conditions
 
