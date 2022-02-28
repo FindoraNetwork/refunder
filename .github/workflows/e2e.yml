@@ -26,5 +26,8 @@ jobs:
 
       - uses: extractions/setup-just@v1
 
-      - run: |
+      - name: Running End to End Testings
+        env:
+          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.TESTING_WALLET_PRIVATE_KEY }}
+        run: |
           just e2e
