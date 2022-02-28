@@ -28,7 +28,7 @@ jobs:
 
       - name: Setup variables
         run: |
-          echo "TESTING_WALLET_PRIVATE_KEY=${{ secrets.E2E_WALLET_PRIVATE_KEY }}"
+          echo "TESTING_WALLET_PRIVATE_KEY=${{ secrets.E2E_WALLET_PRIVATE_KEY }}" >> $GITHUB_ENV
 
       - name: Running End-to-End Testings
         run: |
