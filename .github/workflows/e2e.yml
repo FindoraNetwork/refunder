@@ -26,7 +26,10 @@ jobs:
 
       - uses: extractions/setup-just@v1
 
-      - name: Running End-to-End Testings
+      - name: Setup variables
         run: |
           echo "TESTING_WALLET_PRIVATE_KEY=${{ secrets.E2E_WALLET_PRIVATE_KEY }}"
+
+      - name: Running End-to-End Testings
+        run: |
           just e2e
