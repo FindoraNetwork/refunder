@@ -27,6 +27,6 @@ jobs:
 
       - name: Running End-to-End Testings
         env:
-          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.ETOE_WPK }}
+          E2E_WPK: ${{ secrets.ETOE_WPK }}
         run: |
           just e2e

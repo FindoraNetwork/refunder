@@ -102,7 +102,7 @@ func (s *giveawayTestSuite) setupSuiteDeployContract() {
 	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)
 	s.Require().NoErrorf(err, "ethclient.DialContext:%v", err)
 
-	privateKey, err := crypto.HexToECDSA(os.Getenv("TESTING_WALLET_PRIVATE_KEY"))
+	privateKey, err := crypto.HexToECDSA(os.Getenv("E2E_WPK"))
 	s.Require().NoErrorf(err, "crypto.HexToECDSA:%v", err)
 	s.privateKey = privateKey
 
