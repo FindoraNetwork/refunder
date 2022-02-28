@@ -1,9 +1,9 @@
-name: running e2e tests
+name: Running E2E Tests
 on:
   workflow_call:
 
 jobs:
-  golangci:
+  e2e:
     name: Running End-To-End Tests
     runs-on: ubuntu-latest
     steps:
@@ -13,7 +13,6 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-            ~/.cache/golangci-lint
             ~/go/pkg
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
@@ -29,4 +28,4 @@ jobs:
           TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
         run: |
           go test -v -tags=e2e -count=1 ./e2e/giveaway/...
-	        go test -v -tags=e2e -count=1 ./e2e/gasfee/...
+          go test -v -tags=e2e -count=1 ./e2e/gasfee/...

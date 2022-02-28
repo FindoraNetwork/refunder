@@ -15,7 +15,7 @@ jobs:
   call-workflow-e2e:
     uses: ./.github/workflows/e2e.yml
 
-  publish:
+  release-images:
     name: Building Image and Publishing
     needs: [call-workflow-linter, call-workflow-test, call-workflow-e2e]
     runs-on: ubuntu-latest

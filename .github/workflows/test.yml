@@ -1,4 +1,4 @@
-name: running tests
+name: Running Unit Tests
 on:
   workflow_call:
   push:
@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  golangci:
+  unit-tests:
     name: Running Tests
     runs-on: ubuntu-latest
     steps:
@@ -16,7 +16,6 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-            ~/.cache/golangci-lint
             ~/go/pkg
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
           restore-keys: |
