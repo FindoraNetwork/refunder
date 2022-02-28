@@ -4,7 +4,7 @@ on:
 
 jobs:
   golangci:
-    name: Running Tests
+    name: Running End-To-End Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -24,10 +24,9 @@ jobs:
           # the version I am using
           go-version: "1.17.7"
 
-      - uses: extractions/setup-just@v1
-
-      - name: Running End to End Testings
+      - name: Running End-to-End Testings
         env:
           TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
         run: |
-          just e2e
+          go test -v -tags=e2e -count=1 ./e2e/giveaway/...
+	        go test -v -tags=e2e -count=1 ./e2e/gasfee/...
