@@ -29,5 +29,6 @@ jobs:
       - name: Running End-to-End Testings
         env:
           TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
+        if: "${{ env.TESTING_WALLET_PRIVATE_KEY != '' }}"
         run: |
           just e2e
