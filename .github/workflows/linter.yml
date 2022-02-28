@@ -1,7 +1,7 @@
 name: golangci-lint
 on:
+  workflow_call:
   push:
-    tags: ["[0-9]+.[0-9]+.[0-9]+"]
     branches: [main]
   pull_request:
 

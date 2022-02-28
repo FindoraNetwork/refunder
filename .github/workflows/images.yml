@@ -1,0 +1,68 @@
+name: Building Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  call-workflow-linter:
+    uses: ./.github/workflows/linter.yml
+
+  call-workflow-test:
+    uses: ./.github/workflows/test.yml
+
+  call-workflow-e2e:
+    if: ${{ startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
+    uses: ./.github/workflows/e2e.yml
+
+  publish:
+    name: Building Image and Publishing 
+    needs: [call-workflow-linter, call-workflow-test, call-workflow-e2e-test]
+    # https://github.com/actions/runner/issues/491#issuecomment-850884422
+    # if e2e == skipped means it is a main branch pushing not tag of releasing
+    if: |
+      always() && 
+      (needs.call-workflow-linter.result == 'success') &&
+      (needs.call-workflow-test.result == 'success') &&
+      (needs.call-workflow-e2e.result == 'success' || needs.call-workflow-e2e.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login Github Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ghcr.io/FindoraNetwork/refunder
+          tags: |
+            type=raw,value={{tag}},enable=${{ startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
+            type=raw,value={{branch}}-{{sha}}-{{date 'x'}},enable=${{ !startsWith(github.event.ref, 'refs/tags/[0-9]+.[0-9]+.[0-9]+') }}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
