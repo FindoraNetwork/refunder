@@ -27,7 +27,6 @@ jobs:
 
       - name: Running End-to-End Testings
         env:
-          WALLET_PK: '${{ secrets.E2E_WALLET_PRIVATE_KEY }}'
+          TESTING_WALLET_PRIVATE_KEY: ${{ secrets.E2E_WALLET_PRIVATE_KEY }}
         run: |
-          export TESTING_WALLET_PRIVATE_KEY="$WALLET_PK"
           just e2e
