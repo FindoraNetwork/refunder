@@ -20,7 +20,7 @@ jobs:
 
   publish:
     name: Building Image and Publishing 
-    needs: [call-workflow-linter, call-workflow-test, call-workflow-e2e-test]
+    needs: [call-workflow-linter, call-workflow-test, call-workflow-e2e]
     # https://github.com/actions/runner/issues/491#issuecomment-850884422
     # if e2e == skipped means it is a main branch pushing not tag of releasing
     if: |
@@ -29,6 +29,7 @@ jobs:
       (needs.call-workflow-test.result == 'success') &&
       (needs.call-workflow-e2e.result == 'success' || needs.call-workflow-e2e.result == 'skipped')
     runs-on: ubuntu-latest
+    concurrency: ci-building-image
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
