@@ -38,9 +38,9 @@ type GasfeeService struct {
 	// RefunderTotalTimeoutSec is the timeout second for all operations in the refunder function
 	RefunderTotalTimeoutSec uint `json:"refunder_total_timeout_sec"`
 	// RefunderStartBlockNumber defines the the FilterQuery.FromBlock on the first time start up
-	RefunderStartBlockNumber uint64
+	RefunderStartBlockNumber uint64 `json:"refunder_start_block_number"`
 	// RefunderScrapBlockStep is an interval scale of the FilterQuery.ToBlock should be while querying the event logs
-	RefunderScrapBlockStep int
+	RefunderScrapBlockStep int `json:"refunder_scrap_block_step"`
 	// CrawlerTotalTimeoutSec is the timeout second for all operations in the crawler function
 	CrawlerTotalTimeoutSec uint `json:"crawler_total_timeout_sec"`
 	// RefundThreshold defines the transaction refunding threshold
@@ -48,7 +48,7 @@ type GasfeeService struct {
 	RefundThreshold *big.Float `json:"refund_threshold"`
 	// RefundMaxCapWei is the total maximum incentive amount in Wei
 	// Like 20000 FRA = 20000000000000000000000 wei
-	RefundMaxCapWei *big.Int
+	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
 	// CrawlingAddress is the target address to crawle
 	CrawlingAddress string `json:"crawling_address"`
 	// CrawlingMapper defines the crawling target and its own settings
