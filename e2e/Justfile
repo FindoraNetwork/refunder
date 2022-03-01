@@ -1,5 +1,7 @@
 default: gen
 
+# another cool way
+# type -p podman > /dev/null && cr=podman || cr=docker
 gen:
 	#!/usr/bin/env bash
 	set -euo pipefail
