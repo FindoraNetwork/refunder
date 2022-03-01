@@ -149,6 +149,12 @@ func (p *prices) get(k common.Address) *big.Float {
 	return p.values[k]
 }
 
+func (p *prices) set(k common.Address, v float64) {
+	p.mux.Lock()
+	defer p.mux.Unlock()
+	p.values[k] = big.NewFloat(v)
+}
+
 func (p *prices) cmpThenSet(cmpk common.Address, high, low float64, cond config.PriceKind) {
 	p.mux.Lock()
 	defer p.mux.Unlock()
@@ -393,6 +399,17 @@ func (s *Service) crawler() error {
 	defer cancel()
 
 	handling := func(tokenAddr common.Address, mate *crawlingMate) error {
+		// adding exceptions for pairs
+		// 1. USDT_USDT
+		// 2. USDC_USDT
+		// 3. BUSD_USDT
+		// they are all 1:1 so no need to crawle
+		switch mate.currencyPair {
+		case config.CurrencyPair("USDT_USDT"), config.CurrencyPair("USDC_USDT"), config.CurrencyPair("BUSD_USDT"):
+			s.prices.set(tokenAddr, 1.0)
+			return nil
+		}
+
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.crawlingAddr, nil)
 		if err != nil {
 			return fmt.Errorf("crawler http.NewRequestWithContext failed:%w", err)
