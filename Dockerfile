@@ -11,5 +11,6 @@ RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o refunder .
 
 FROM docker.io/busybox:latest
 COPY --from=builder /app/refunder /refunder
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
 
 ENTRYPOINT ["/refunder"]
