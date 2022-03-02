@@ -103,8 +103,8 @@ type GiveawayService struct {
 	MaxCapWei *big.Int `json:"max_cap_wei"`
 	// TokenAddresses is the address of tokens gonna to listen to incentive
 	TokenAddresses []string `json:"token_addresses"`
-	// CurrentGivedWeiFilepath stores the current give out wei information
-	CurrentGivedWeiFilepath string `json:"current_gived_wei_filepath"`
+	// CurrentGaveWeiFilepath stores the current gave out wei information
+	CurrentGaveWeiFilepath string `json:"current_gave_wei_filepath"`
 }
 
 // Load simply loading the config from a json file which is specificed

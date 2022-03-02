@@ -34,11 +34,11 @@ type Service struct {
 
 	filterQuery ethereum.FilterQuery
 
-	privateKey          *ecdsa.PrivateKey
-	fromAddress         common.Address
-	maxCapWei           *big.Int
-	fixedGiveawayWei    *big.Int
-	curGivedWeiFilepath string
+	privateKey         *ecdsa.PrivateKey
+	fromAddress        common.Address
+	maxCapWei          *big.Int
+	fixedGiveawayWei   *big.Int
+	curGaveWeiFilepath string
 }
 
 func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
@@ -72,11 +72,11 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 				{common.BytesToHash([]byte(""))},
 			},
 		},
-		privateKey:          privateKey,
-		fromAddress:         crypto.PubkeyToAddress(*publicKey),
-		fixedGiveawayWei:    conf.FixedGiveawayWei,
-		maxCapWei:           conf.MaxCapWei,
-		curGivedWeiFilepath: conf.CurrentGivedWeiFilepath,
+		privateKey:         privateKey,
+		fromAddress:        crypto.PubkeyToAddress(*publicKey),
+		fixedGiveawayWei:   conf.FixedGiveawayWei,
+		maxCapWei:          conf.MaxCapWei,
+		curGaveWeiFilepath: conf.CurrentGaveWeiFilepath,
 	}
 
 	if err := s.Start(); err != nil {
@@ -178,9 +178,9 @@ func (s *Service) handler(vlog types.Log) error {
 		return fmt.Errorf("handler receive not expecting format on topics:%v, tx_hash:%s", vlog.Topics, txHash)
 	}
 
-	curGivedWeiB, err := ioutil.ReadFile(s.curGivedWeiFilepath)
+	curGivedWeiB, err := ioutil.ReadFile(s.curGaveWeiFilepath)
 	if err != nil {
-		return fmt.Errorf("handler open file:%q failed:%w", s.curGivedWeiFilepath, err)
+		return fmt.Errorf("handler open file:%q failed:%w", s.curGaveWeiFilepath, err)
 	}
 	curGivedWei := big.NewInt(0).SetBytes(curGivedWeiB)
 
@@ -263,8 +263,8 @@ func (s *Service) handler(vlog types.Log) error {
 	}
 
 	curGivedWei = curGivedWei.Add(curGivedWei, s.fixedGiveawayWei)
-	if err := ioutil.WriteFile(s.curGivedWeiFilepath, curGivedWei.Bytes(), os.ModeType); err != nil {
-		return fmt.Errorf("handler write file:%q failed:%w", s.curGivedWeiFilepath, err)
+	if err := ioutil.WriteFile(s.curGaveWeiFilepath, curGivedWei.Bytes(), os.ModeType); err != nil {
+		return fmt.Errorf("handler write file:%q failed:%w", s.curGaveWeiFilepath, err)
 	}
 
 	s.stdoutlogger.Printf(`handler success, to_address:%v, block_number:%v, current_giveout:%v, current_nonce:%v, tx_hash:%v`,
