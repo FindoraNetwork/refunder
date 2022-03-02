@@ -310,7 +310,7 @@ func (s *Service) refunder() error {
 			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
-		fluctuation := big.NewFloat(0).Quo(fraPrice, toPrice)
+		fluctuation := big.NewFloat(0).Quo(toPrice, fraPrice)
 		refundValue, _ := big.NewFloat(0).Mul(BaseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{

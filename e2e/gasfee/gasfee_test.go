@@ -200,8 +200,9 @@ func (s *gasfeeTestSuite) Test_E2E_Gasfee() {
 	fraPrice := big.NewFloat(0.0198)
 	// at mock gate.io server the Lowest price of DEMO_USDT
 	demoPrice := big.NewFloat(361.3522)
-	fluctuation := fraPrice.Quo(fraPrice, demoPrice)
-	// wantBalance == 14589226245 == 0.000000014589226245 wei
+	// 361.3522 / 0.0198 = 18250.1111111
+	fluctuation := fraPrice.Quo(demoPrice, fraPrice)
+	// wantBalance = 18250.1111111 * 266255000000000 = 4859183333890000000 wei
 	wantBalance, _ := big.NewFloat(0).Mul(gasfee.BaseRate, fluctuation).Int(nil)
 	// 3 tokens of DEMO * 361.3522 USDT == 1084.0566 USDT
 	mint3tokens := big.NewInt(3000000)
