@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"os"
@@ -33,11 +34,11 @@ type Service struct {
 
 	filterQuery ethereum.FilterQuery
 
-	privateKey        *ecdsa.PrivateKey
-	fromAddress       common.Address
-	maxCapWei         *big.Int
-	fixedGiveawayWei  *big.Int
-	currentGiveoutWei *big.Int
+	privateKey          *ecdsa.PrivateKey
+	fromAddress         common.Address
+	maxCapWei           *big.Int
+	fixedGiveawayWei    *big.Int
+	curGivedWeiFilepath string
 }
 
 func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
@@ -71,11 +72,11 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 				{common.BytesToHash([]byte(""))},
 			},
 		},
-		privateKey:        privateKey,
-		fromAddress:       crypto.PubkeyToAddress(*publicKey),
-		fixedGiveawayWei:  conf.FixedGiveawayWei,
-		maxCapWei:         conf.MaxCapWei,
-		currentGiveoutWei: big.NewInt(0),
+		privateKey:          privateKey,
+		fromAddress:         crypto.PubkeyToAddress(*publicKey),
+		fixedGiveawayWei:    conf.FixedGiveawayWei,
+		maxCapWei:           conf.MaxCapWei,
+		curGivedWeiFilepath: conf.CurrentGivedWeiFilepath,
 	}
 
 	if err := s.Start(); err != nil {
@@ -177,6 +178,12 @@ func (s *Service) handler(vlog types.Log) error {
 		return fmt.Errorf("handler receive not expecting format on topics:%v, tx_hash:%s", vlog.Topics, txHash)
 	}
 
+	curGivedWeiB, err := ioutil.ReadFile(s.curGivedWeiFilepath)
+	if err != nil {
+		return fmt.Errorf("handler open file:%q failed:%w", s.curGivedWeiFilepath, err)
+	}
+	curGivedWei := big.NewInt(0).SetBytes(curGivedWeiB)
+
 	toAddress := common.BytesToAddress(common.TrimLeftZeroes(vlog.Topics[2].Bytes()))
 	blockNumber := big.NewInt(0).SetUint64(vlog.BlockNumber)
 
@@ -201,28 +208,18 @@ func (s *Service) handler(vlog types.Log) error {
 		return fmt.Errorf("handler toAddress NonceAt failed:%w, tx_hash:%s, to_address:%s", err, txHash, toAddress)
 	}
 
-	s.stdoutlogger.Printf(`
-handler receiving:
-to_address:	 %v 
-to_balance:      %v
-to_nonce:	 %v
-block_number:	 %v
-fix_giveaway:	 %v
-max_cap:	 %v
-current_giveout: %v
-tx_hash:	 %v
-`,
+	s.stdoutlogger.Printf(`handler receiving, to_address:%s, to_balance:%s, to_nonce:%d, block_number:%s, fix_giveaway:%s, max_cap:%s, current_giveout:%s, tx_hash:%s`,
 		toAddress,
 		toBalance,
 		toNonce,
 		blockNumber,
 		s.fixedGiveawayWei,
 		s.maxCapWei,
-		s.currentGiveoutWei,
+		curGivedWei,
 		txHash,
 	)
 
-	if toBalance.Cmp(big.NewInt(0)) != 0 || toNonce != 0 || s.currentGiveoutWei.Cmp(s.maxCapWei) >= 0 {
+	if toBalance.Cmp(big.NewInt(0)) != 0 || toNonce != 0 || curGivedWei.Cmp(s.maxCapWei) >= 0 {
 		return ErrNotEligible
 	}
 
@@ -265,19 +262,15 @@ tx_hash:	 %v
 		return fmt.Errorf("handler SendTransaction failed:%w, tx_hash:%s", err, txHash)
 	}
 
-	s.currentGiveoutWei = s.currentGiveoutWei.Add(s.currentGiveoutWei, s.fixedGiveawayWei)
+	curGivedWei = curGivedWei.Add(curGivedWei, s.fixedGiveawayWei)
+	if err := ioutil.WriteFile(s.curGivedWeiFilepath, curGivedWei.Bytes(), os.ModeType); err != nil {
+		return fmt.Errorf("handler write file:%q failed:%w", s.curGivedWeiFilepath, err)
+	}
 
-	s.stdoutlogger.Printf(`
-handler success:
-to_address:	 %v 
-block_number:	 %v
-current_giveout: %v
-current_nonce:   %v
-tx_hash:	 %v
-`,
+	s.stdoutlogger.Printf(`handler success, to_address:%v, block_number:%v, current_giveout:%v, current_nonce:%v, tx_hash:%v`,
 		toAddress,
 		blockNumber,
-		s.currentGiveoutWei,
+		curGivedWei,
 		nonce,
 		txHash,
 	)

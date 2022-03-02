@@ -49,6 +49,10 @@ type GasfeeService struct {
 	// RefundMaxCapWei is the total maximum incentive amount in Wei
 	// Like 20000 FRA = 20000000000000000000000 wei
 	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
+	// RefundedWeiFilepath stores the current refunded wei information
+	RefundedWeiFilepath string `json:"refunded_wei_filepath"`
+	// CurrentBlockNumberFilepath stores the current served block high information
+	CurrentBlockNumberFilepath string `json:"current_block_number_filepath"`
 	// CrawlingAddress is the target address to crawle
 	CrawlingAddress string `json:"crawling_address"`
 	// CrawlingMapper defines the crawling target and its own settings
@@ -99,6 +103,8 @@ type GiveawayService struct {
 	MaxCapWei *big.Int `json:"max_cap_wei"`
 	// TokenAddresses is the address of tokens gonna to listen to incentive
 	TokenAddresses []string `json:"token_addresses"`
+	// CurrentGivedWeiFilepath stores the current give out wei information
+	CurrentGivedWeiFilepath string `json:"current_gived_wei_filepath"`
 }
 
 // Load simply loading the config from a json file which is specificed

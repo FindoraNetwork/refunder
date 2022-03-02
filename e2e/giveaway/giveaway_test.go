@@ -6,6 +6,7 @@ package e2e_test
 import (
 	"context"
 	"crypto/ecdsa"
+	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
@@ -65,20 +66,24 @@ func (s *giveawayTestSuite) SetupSuite() {
 }
 
 func (s *giveawayTestSuite) setupSuiteStartService() {
+	tempF, err := ioutil.TempFile("", "giveaway_e2e_current_gived_wei_file_*")
+	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
+
 	srv, err := giveaway.New(
 		client.New(&config.Server{
-			ServerDialTimeoutSec: 3,
+			ServerDialTimeoutSec: 9,
 			ServerWSAddress:      s.evmWSAddress,
 			ServerRPCAddress:     s.evmPRCAddress,
 		}),
 		&config.GiveawayService{
-			PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
-			HandlerTotalTimeoutSec: 3,
-			SubscripTimeoutSec:     1,
-			EventLogPoolSize:       9,
-			FixedGiveawayWei:       s.fixedGiveawayWei,
-			MaxCapWei:              s.maxCapWei,
-			TokenAddresses:         []string{s.tokenAddr.String()},
+			PrivateKey:              strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
+			HandlerTotalTimeoutSec:  30,
+			SubscripTimeoutSec:      3,
+			EventLogPoolSize:        9,
+			FixedGiveawayWei:        s.fixedGiveawayWei,
+			MaxCapWei:               s.maxCapWei,
+			TokenAddresses:          []string{s.tokenAddr.String()},
+			CurrentGivedWeiFilepath: tempF.Name(),
 		})
 	s.Require().NoErrorf(err, "giveaway.New:%v", err)
 
@@ -143,7 +148,7 @@ func (s *giveawayTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *b
 
 func (s *giveawayTestSuite) Test_E2E_Giveaway() {
 	// total timeout for this test case
-	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*3)
+	ctx, cancel := context.WithTimeout(context.Background(), s.blockTime*time.Duration(len(s.toAddrs))*6)
 	defer cancel()
 
 	c, err := ethclient.DialContext(ctx, s.evmPRCAddress)

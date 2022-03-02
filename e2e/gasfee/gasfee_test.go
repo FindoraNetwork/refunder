@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
+	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -130,22 +131,29 @@ func (s *gasfeeTestSuite) setupSuiteFakeGateIOServer() {
 }
 
 func (s *gasfeeTestSuite) setupSuiteStartService() {
+	tmpRefunded, err := ioutil.TempFile("", "gasfee_e2e_refunded_file_*")
+	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
+	tmpCurBlock, err := ioutil.TempFile("", "gasfee_e2e_current_block_file_*")
+	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
+
 	srv, err := gasfee.New(
 		client.New(&config.Server{
-			ServerDialTimeoutSec: 3,
+			ServerDialTimeoutSec: 9,
 			ServerRPCAddress:     s.evmPRCAddress,
 		}),
 		&config.GasfeeService{
-			PrivateKey:               strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
-			CrawleInEveryMinutes:     1,
-			RefundEveryDayAt:         time.Now().UTC().Add(3 * time.Minute),
-			RefunderTotalTimeoutSec:  3,
-			RefunderStartBlockNumber: s.startBlockNumber,
-			RefunderScrapBlockStep:   200,
-			CrawlerTotalTimeoutSec:   3,
-			RefundThreshold:          big.NewFloat(999.99),    // 999.99 USDT
-			RefundMaxCapWei:          big.NewInt(14589226245), // 0.000000014589226245 wei
-			CrawlingAddress:          s.gateIOServer.URL,
+			PrivateKey:                 strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
+			CrawleInEveryMinutes:       1,
+			RefundEveryDayAt:           time.Now().UTC().Add(3 * time.Minute),
+			RefunderTotalTimeoutSec:    30,
+			RefunderStartBlockNumber:   s.startBlockNumber,
+			RefunderScrapBlockStep:     200,
+			CrawlerTotalTimeoutSec:     3,
+			RefundThreshold:            big.NewFloat(999.99),    // 999.99 USDT
+			RefundMaxCapWei:            big.NewInt(14589226245), // 0.000000014589226245 wei
+			CrawlingAddress:            s.gateIOServer.URL,
+			RefundedWeiFilepath:        tmpRefunded.Name(),
+			CurrentBlockNumberFilepath: tmpCurBlock.Name(),
 			CrawlingMapper: map[config.CurrencyPair]*config.CrawlingMate{
 				config.CurrencyPair("FRA_USDT"): {
 					PriceKind:    config.Highest,

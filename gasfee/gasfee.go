@@ -3,9 +3,11 @@ package gasfee
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math"
 	"math/big"
@@ -30,26 +32,26 @@ import (
 var BaseRate = big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
 
 type Service struct {
-	client          client.Client
-	stdoutlogger    *log.Logger
-	stderrlogger    *log.Logger
-	privateKey      *ecdsa.PrivateKey
-	fromAddress     common.Address
-	done            chan struct{}
-	crawlerTick     *time.Ticker
-	refundTick      *refundTicker
-	filterQuery     ethereum.FilterQuery
-	refunderTimeout time.Duration
-	crawlerTimeout  time.Duration
-	curBlockNumber  uint64
-	refundThreshold *big.Float
-	refundMaxCapWei *big.Int
-	refundedWei     *big.Int
-	prices          *prices
-	crawlingAddr    string
-	fraTokenAddr    common.Address
-	mapper          map[common.Address]*crawlingMate
-	blockInterval   int
+	client                 client.Client
+	stdoutlogger           *log.Logger
+	stderrlogger           *log.Logger
+	privateKey             *ecdsa.PrivateKey
+	fromAddress            common.Address
+	done                   chan struct{}
+	crawlerTick            *time.Ticker
+	refundTick             *refundTicker
+	filterQuery            ethereum.FilterQuery
+	refunderTimeout        time.Duration
+	crawlerTimeout         time.Duration
+	curBlockNumberFilepath string
+	refundThreshold        *big.Float
+	refundMaxCapWei        *big.Int
+	refundedWeiFilepath    string
+	prices                 *prices
+	crawlingAddr           string
+	fraTokenAddr           common.Address
+	mapper                 map[common.Address]*crawlingMate
+	blockInterval          int
 }
 
 type crawlingMate struct {
@@ -105,18 +107,18 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 				{common.BytesToHash([]byte(""))},
 			},
 		},
-		refundTick:      &refundTicker{period: 24 * time.Hour, at: conf.RefundEveryDayAt},
-		refunderTimeout: time.Duration(conf.RefunderTotalTimeoutSec) * time.Second,
-		crawlerTimeout:  time.Duration(conf.CrawlerTotalTimeoutSec) * time.Second,
-		refundThreshold: conf.RefundThreshold,
-		prices:          &prices{mux: new(sync.RWMutex), values: make(map[common.Address]*big.Float)},
-		crawlingAddr:    conf.CrawlingAddress,
-		fraTokenAddr:    fraTokenAddr,
-		mapper:          mapper,
-		curBlockNumber:  conf.RefunderStartBlockNumber,
-		blockInterval:   conf.RefunderScrapBlockStep,
-		refundMaxCapWei: conf.RefundMaxCapWei,
-		refundedWei:     big.NewInt(0),
+		refundTick:             &refundTicker{period: 24 * time.Hour, at: conf.RefundEveryDayAt},
+		refunderTimeout:        time.Duration(conf.RefunderTotalTimeoutSec) * time.Second,
+		crawlerTimeout:         time.Duration(conf.CrawlerTotalTimeoutSec) * time.Second,
+		refundThreshold:        conf.RefundThreshold,
+		prices:                 &prices{mux: new(sync.RWMutex), values: make(map[common.Address]*big.Float)},
+		crawlingAddr:           conf.CrawlingAddress,
+		fraTokenAddr:           fraTokenAddr,
+		mapper:                 mapper,
+		curBlockNumberFilepath: conf.CurrentBlockNumberFilepath,
+		blockInterval:          conf.RefunderScrapBlockStep,
+		refundMaxCapWei:        conf.RefundMaxCapWei,
+		refundedWeiFilepath:    conf.RefundedWeiFilepath,
 	}
 
 	s.resetPrices()
@@ -273,27 +275,23 @@ func (s *Service) refunder() error {
 			return fmt.Errorf("refunder cannot find decimal from token_address:%s, tx_hash:%s", log.Address, log.TxHash)
 		}
 
+		refundedWeiB, err := ioutil.ReadFile(s.refundedWeiFilepath)
+		if err != nil {
+			return fmt.Errorf("refunder read file:%q failed:%w", s.refundedWeiFilepath, err)
+		}
+		refundedWei := big.NewInt(0).SetBytes(refundedWeiB)
+
 		fraPrice := s.prices.get(s.fraTokenAddr)
 		toPrice := s.prices.get(log.Address)
 
 		transferedToken := value.Quo(value, big.NewFloat(math.Pow10(mate.decimal)))
 		transferedPrice := transferedToken.Mul(transferedToken, toPrice)
 
-		s.stdoutlogger.Printf(`
-refunder handling:
-to_address:		%s
-value:			%v
-threshold:		%v
-tx_hash:		%s
-token_address:		%s
-decimal:		%d
-fra_price:		%v
-target_price:		%v
-refunded_wei:		%s
-refund_max_cap_wei:	%s
-`, toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, s.refundedWei, s.refundMaxCapWei)
+		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, fra_price:%v, target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s`,
+			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, refundedWei, s.refundMaxCapWei,
+		)
 
-		if transferedPrice.Cmp(s.refundThreshold) <= 0 || s.refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
+		if transferedPrice.Cmp(s.refundThreshold) <= 0 || refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
 			return ErrNotOverThreshold
 		}
 
@@ -338,16 +336,14 @@ refund_max_cap_wei:	%s
 			return fmt.Errorf("refunder SendTransaction failed:%w, tx_hash:%s, addr:%s", err, tx.Hash(), log.Address)
 		}
 
-		s.refundedWei = s.refundedWei.Add(s.refundedWei, refundValue)
+		refundedWei = refundedWei.Add(refundedWei, refundValue)
+		if err := ioutil.WriteFile(s.refundedWeiFilepath, refundedWei.Bytes(), os.ModeType); err != nil {
+			return fmt.Errorf("refunder write file:%q failed:%w", s.refundedWeiFilepath, err)
+		}
 
-		s.stdoutlogger.Printf(`
-refunder success:
-to_address:		%s
-tx_hash:		%s
-token_address:		%s
-refund_tx_hash:		%s
-refund_value:		%s
-`, toAddr, log.TxHash, log.Address, tx.Hash(), refundValue)
+		s.stdoutlogger.Printf(`refunder success, to_address:%s, tx_hash:%s, token_address:%s, refund_tx_hash:%s, refund_value:%s, refunded_wei:%s`,
+			toAddr, log.TxHash, log.Address, tx.Hash(), refundValue, refundedWei,
+		)
 
 		return nil
 	}
@@ -357,8 +353,14 @@ refund_value:		%s
 		return fmt.Errorf("refunder c.BlockNumber failed:%w", err)
 	}
 
-	blockNumberDiff := latestBlockNumber - s.curBlockNumber
-	curBlockNumber := s.curBlockNumber
+	curBlockNumB, err := ioutil.ReadFile(s.curBlockNumberFilepath)
+	if err != nil {
+		return fmt.Errorf("refunder read file:%q failed:%w", s.curBlockNumberFilepath, err)
+	}
+	curBlockNum, _ := binary.Uvarint(curBlockNumB)
+
+	blockNumberDiff := latestBlockNumber - curBlockNum
+	curBlockNumber := curBlockNum
 	var errs []string
 
 	for n := 0; n < int(blockNumberDiff); n += s.blockInterval {
@@ -385,7 +387,12 @@ refund_value:		%s
 		}
 	}
 
-	s.curBlockNumber += blockNumberDiff
+	curBlockNum += blockNumberDiff
+	curBlockNumB = make([]byte, 3, binary.MaxVarintLen64)
+	binary.PutUvarint(curBlockNumB, curBlockNum)
+	if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
+		return fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
+	}
 
 	if errs != nil {
 		return fmt.Errorf(strings.Join(errs, "\n"))
