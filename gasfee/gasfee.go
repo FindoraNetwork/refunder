@@ -49,7 +49,8 @@ type Service struct {
 	refundedWeiFilepath    string
 	prices                 *prices
 	crawlingAddr           string
-	fraTokenAddr           common.Address
+	numerator              common.Address
+	denominator            common.Address
 	mapper                 map[common.Address]*crawlingMate
 	blockInterval          int
 }
@@ -73,7 +74,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 
 	mapper := make(map[common.Address]*crawlingMate)
 	addresses := make([]common.Address, 0, len(conf.CrawlingMapper))
-	var fraTokenAddr common.Address
+	var denominator, numerator common.Address
 
 	for cp, mate := range conf.CrawlingMapper {
 		tokenAddr := common.HexToAddress(mate.TokenAddress)
@@ -85,9 +86,12 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 			decimal:      mate.Decimal,
 		}
 
-		if currencyPair == config.CurrencyPair("FRA_USDT") {
-			fraTokenAddr = tokenAddr
-		} else {
+		switch currencyPair {
+		case conf.Denominator:
+			denominator = tokenAddr
+		case conf.Numerator:
+			numerator = tokenAddr
+		default:
 			addresses = append(addresses, tokenAddr)
 		}
 	}
@@ -113,7 +117,8 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refundThreshold:        conf.RefundThreshold,
 		prices:                 &prices{mux: new(sync.RWMutex), values: make(map[common.Address]*big.Float)},
 		crawlingAddr:           conf.CrawlingAddress,
-		fraTokenAddr:           fraTokenAddr,
+		denominator:            denominator,
+		numerator:              numerator,
 		mapper:                 mapper,
 		curBlockNumberFilepath: conf.CurrentBlockNumberFilepath,
 		blockInterval:          conf.RefunderScrapBlockStep,
@@ -281,14 +286,15 @@ func (s *Service) refunder() error {
 		}
 		refundedWei := big.NewInt(0).SetBytes(refundedWeiB)
 
-		fraPrice := s.prices.get(s.fraTokenAddr)
+		denominator := s.prices.get(s.denominator)
+		numerator := s.prices.get(s.numerator)
 		toPrice := s.prices.get(log.Address)
 
 		transferedToken := value.Quo(value, big.NewFloat(math.Pow10(mate.decimal)))
 		transferedPrice := transferedToken.Mul(transferedToken, toPrice)
 
-		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, fra_price:%v, target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s`,
-			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, fraPrice, toPrice, refundedWei, s.refundMaxCapWei,
+		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, (numerator:%v / denominator:%v), target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s`,
+			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, numerator, denominator, toPrice, refundedWei, s.refundMaxCapWei,
 		)
 
 		if transferedPrice.Cmp(s.refundThreshold) <= 0 || refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
@@ -310,7 +316,7 @@ func (s *Service) refunder() error {
 			return fmt.Errorf("refunder NetworkID failed:%w, tx_hash:%s, addr:%s", err, log.TxHash, log.Address)
 		}
 
-		fluctuation := big.NewFloat(0).Quo(toPrice, fraPrice)
+		fluctuation := big.NewFloat(0).Quo(numerator, denominator)
 		refundValue, _ := big.NewFloat(0).Mul(BaseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{

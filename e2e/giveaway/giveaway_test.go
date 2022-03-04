@@ -76,14 +76,14 @@ func (s *giveawayTestSuite) setupSuiteStartService() {
 			ServerRPCAddress:     s.evmPRCAddress,
 		}),
 		&config.GiveawayService{
-			PrivateKey:              strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
-			HandlerTotalTimeoutSec:  30,
-			SubscripTimeoutSec:      3,
-			EventLogPoolSize:        9,
-			FixedGiveawayWei:        s.fixedGiveawayWei,
-			MaxCapWei:               s.maxCapWei,
-			TokenAddresses:          []string{s.tokenAddr.String()},
-			CurrentGivedWeiFilepath: tempF.Name(),
+			PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),
+			HandlerTotalTimeoutSec: 30,
+			SubscripTimeoutSec:     3,
+			EventLogPoolSize:       9,
+			FixedGiveawayWei:       s.fixedGiveawayWei,
+			MaxCapWei:              s.maxCapWei,
+			TokenAddresses:         []string{s.tokenAddr.String()},
+			CurrentGaveWeiFilepath: tempF.Name(),
 		})
 	s.Require().NoErrorf(err, "giveaway.New:%v", err)
 

@@ -51,6 +51,10 @@ type GasfeeService struct {
 	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
 	// RefundedWeiFilepath stores the current refunded wei information
 	RefundedWeiFilepath string `json:"refunded_wei_filepath"`
+	// Numerator is the target network name of the price pair
+	Numerator CurrencyPair
+	// Denominator is the FRA network name of the price pair
+	Denominator CurrencyPair
 	// CurrentBlockNumberFilepath stores the current served block high information
 	CurrentBlockNumberFilepath string `json:"current_block_number_filepath"`
 	// CrawlingAddress is the target address to crawle

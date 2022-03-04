@@ -154,6 +154,8 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 			CrawlingAddress:            s.gateIOServer.URL,
 			RefundedWeiFilepath:        tmpRefunded.Name(),
 			CurrentBlockNumberFilepath: tmpCurBlock.Name(),
+			Numerator:                  config.CurrencyPair("DEMO_USDT"),
+			Denominator:                config.CurrencyPair("FRA_USDT"),
 			CrawlingMapper: map[config.CurrencyPair]*config.CrawlingMate{
 				config.CurrencyPair("FRA_USDT"): {
 					PriceKind:    config.Highest,
