@@ -83,6 +83,8 @@ func New(c client.Client, conf *config.GiveawayService) (*Service, error) {
 		return nil, fmt.Errorf("new on starting service failed:%w", err)
 	}
 
+	s.stdoutlogger.Println("giveawayService starting:", conf)
+
 	return s, nil
 }
 
