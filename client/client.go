@@ -51,15 +51,23 @@ func New(config *config.Server) Client {
 
 // DialRPC calls the ethclient.DialContext directly with http address
 func (c *client) DialRPC() (Client, error) {
-	dialTimeout, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
-	)
-	defer cancel()
+	var client *ethclient.Client
+	var err error
 
-	client, err := ethclient.DialContext(dialTimeout, c.config.ServerRPCAddress)
+	for index := 0; index < len(c.config.ServerRPCAddresses); index++ {
+		dialTimeout, cancel := context.WithTimeout(
+			context.Background(),
+			time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
+		)
+		defer cancel()
+
+		client, err = ethclient.DialContext(dialTimeout, c.config.ServerRPCAddresses[index])
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
-		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
+		return nil, fmt.Errorf("ethclient.Dial failed:%w, config:%v", err, c.config)
 	}
 
 	c.rpcclient = client
@@ -68,13 +76,21 @@ func (c *client) DialRPC() (Client, error) {
 
 // DialWS calls the ethclient.DialContext directly with websocket address
 func (c *client) DialWS() (Client, error) {
-	dialTimeout, cancel := context.WithTimeout(
-		context.Background(),
-		time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
-	)
-	defer cancel()
+	var client *ethclient.Client
+	var err error
 
-	client, err := ethclient.DialContext(dialTimeout, c.config.ServerWSAddress)
+	for index := 0; index < len(c.config.ServerWSAddresses); index++ {
+		dialTimeout, cancel := context.WithTimeout(
+			context.Background(),
+			time.Duration(c.config.ServerDialTimeoutSec)*time.Second,
+		)
+		defer cancel()
+
+		client, err = ethclient.DialContext(dialTimeout, c.config.ServerWSAddresses[index])
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("ethclient.Dial failed: %w, config: %v", err, c.config)
 	}

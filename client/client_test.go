@@ -12,8 +12,15 @@ import (
 func Test_Client(t *testing.T) {
 	c := client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-001-public.prod.findora.org:8546",
-		ServerRPCAddress:     "https://prod-testnet.prod.findora.org:8545",
+		ServerWSAddresses: []string{
+			"ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546",
+			"ws://prod-testnet-us-west-2-sentry-001-public.prod.findora.org:8546",
+			"ws://prod-testnet-us-west-2-sentry-002-public.prod.findora.org:8546",
+			"ws://prod-testnet-us-west-2-sentry-003-public.prod.findora.org:8546",
+		},
+		ServerRPCAddresses: []string{
+			"https://prod-testnet.prod.findora.org:8545",
+		},
 	})
 
 	_, err := c.DialWS()
@@ -23,8 +30,8 @@ func Test_Client(t *testing.T) {
 
 	c = client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddress:      "not-exists-address",
-		ServerRPCAddress:     "not-exists-address",
+		ServerWSAddresses:    []string{"not-exists-address"},
+		ServerRPCAddresses:   []string{"not-exists-address"},
 	})
 
 	gc, err := c.DialWS()

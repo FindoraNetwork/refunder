@@ -142,7 +142,7 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 	srv, err := gasfee.New(
 		client.New(&config.Server{
 			ServerDialTimeoutSec: 9,
-			ServerRPCAddress:     s.evmPRCAddress,
+			ServerRPCAddresses:   []string{s.evmPRCAddress},
 		}),
 		&config.GasfeeService{
 			PrivateKey:                 strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),

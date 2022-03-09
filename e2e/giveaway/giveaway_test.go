@@ -72,8 +72,8 @@ func (s *giveawayTestSuite) setupSuiteStartService() {
 	srv, err := giveaway.New(
 		client.New(&config.Server{
 			ServerDialTimeoutSec: 9,
-			ServerWSAddress:      s.evmWSAddress,
-			ServerRPCAddress:     s.evmPRCAddress,
+			ServerWSAddresses:    []string{s.evmWSAddress},
+			ServerRPCAddresses:   []string{s.evmPRCAddress},
 		}),
 		&config.GiveawayService{
 			PrivateKey:             strings.TrimPrefix(hexutil.Encode(crypto.FromECDSA(s.privateKey)), "0x"),

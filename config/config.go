@@ -21,10 +21,10 @@ type Config struct {
 type Server struct {
 	// a timeout second while dialing to server do a websocket connection
 	ServerDialTimeoutSec uint `json:"server_dial_timeout_sec"`
-	// the websocket server address with port number
-	ServerWSAddress string `json:"server_ws_address"`
-	// the http server address with port number
-	ServerRPCAddress string `json:"server_rpc_address"`
+	// the websocket server addresses with port number
+	ServerWSAddresses []string `json:"server_ws_addresses"`
+	// the http server addresses with port number
+	ServerRPCAddresses []string `json:"server_rpc_addresses"`
 }
 
 type GasfeeService struct {
