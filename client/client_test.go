@@ -12,7 +12,7 @@ import (
 func Test_Client(t *testing.T) {
 	c := client.New(&config.Server{
 		ServerDialTimeoutSec: 3,
-		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-000-public.prod.findora.org:8546",
+		ServerWSAddress:      "ws://prod-testnet-us-west-2-sentry-001-public.prod.findora.org:8546",
 		ServerRPCAddress:     "https://prod-testnet.prod.findora.org:8545",
 	})
 

@@ -27,10 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// BaseRate is the XXX base refund rate dscribed in the README
-// equals to 266255000000000 == 0.000266255000000000 wei
-var BaseRate = big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
-
 type Service struct {
 	client                 client.Client
 	stdoutlogger           *log.Logger
@@ -53,6 +49,7 @@ type Service struct {
 	denominator            common.Address
 	mapper                 map[common.Address]*crawlingMate
 	blockInterval          int
+	baseRate               *big.Float
 }
 
 type crawlingMate struct {
@@ -124,6 +121,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		blockInterval:          conf.RefunderScrapBlockStep,
 		refundMaxCapWei:        conf.RefundMaxCapWei,
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
+		baseRate:               conf.RefundBaseRateWei,
 	}
 
 	s.resetPrices()
@@ -317,7 +315,7 @@ func (s *Service) refunder() error {
 		}
 
 		fluctuation := big.NewFloat(0).Quo(numerator, denominator)
-		refundValue, _ := big.NewFloat(0).Mul(BaseRate, fluctuation).Int(nil)
+		refundValue, _ := big.NewFloat(0).Mul(s.baseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,

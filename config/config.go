@@ -46,9 +46,11 @@ type GasfeeService struct {
 	// RefundThreshold defines the transaction refunding threshold
 	// In USDT as unit currently
 	RefundThreshold *big.Float `json:"refund_threshold"`
-	// RefundMaxCapWei is the total maximum incentive amount in Wei
+	// RefundMaxCapWei is the total maximum incentive amount in wei
 	// Like 20000 FRA = 20000000000000000000000 wei
 	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
+	// RefundBaseRateWei is the base rate XXX from the readme in wei
+	RefundBaseRateWei *big.Float `json:"refund_base_rate_wei"`
 	// RefundedWeiFilepath stores the current refunded wei information
 	RefundedWeiFilepath string `json:"refunded_wei_filepath"`
 	// Numerator is the target network name of the price pair

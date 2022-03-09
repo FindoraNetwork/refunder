@@ -43,6 +43,7 @@ type gasfeeTestSuite struct {
 	evmPRCAddress    string
 	gateIOServer     *httptest.Server
 	startBlockNumber uint64
+	baseRate         *big.Float
 }
 
 func TestE2EGasfeeTestSuite(t *testing.T) {
@@ -136,6 +137,8 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 	tmpCurBlock, err := ioutil.TempFile("", "gasfee_e2e_current_block_file_*")
 	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
 
+	baseRate := big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
+
 	srv, err := gasfee.New(
 		client.New(&config.Server{
 			ServerDialTimeoutSec: 9,
@@ -156,6 +159,7 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 			CurrentBlockNumberFilepath: tmpCurBlock.Name(),
 			Numerator:                  config.CurrencyPair("DEMO_USDT"),
 			Denominator:                config.CurrencyPair("FRA_USDT"),
+			RefundBaseRateWei:          baseRate,
 			CrawlingMapper: map[config.CurrencyPair]*config.CrawlingMate{
 				config.CurrencyPair("FRA_USDT"): {
 					PriceKind:    config.Highest,
@@ -171,6 +175,7 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 		})
 	s.Require().NoErrorf(err, "gasfee.New:%v", err)
 	s.serv = srv
+	s.baseRate = baseRate
 }
 
 func (s *gasfeeTestSuite) genAuth(ctx context.Context, c *ethclient.Client) *bind.TransactOpts {
@@ -205,7 +210,7 @@ func (s *gasfeeTestSuite) Test_E2E_Gasfee() {
 	// 361.3522 / 0.0198 = 18250.1111111
 	fluctuation := fraPrice.Quo(demoPrice, fraPrice)
 	// wantBalance = 18250.1111111 * 266255000000000 = 4859183333890000000 wei
-	wantBalance, _ := big.NewFloat(0).Mul(gasfee.BaseRate, fluctuation).Int(nil)
+	wantBalance, _ := big.NewFloat(0).Mul(s.baseRate, fluctuation).Int(nil)
 	// 3 tokens of DEMO * 361.3522 USDT == 1084.0566 USDT
 	mint3tokens := big.NewInt(3000000)
 	type want struct {
