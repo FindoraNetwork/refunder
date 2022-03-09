@@ -127,7 +127,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 	s.resetPrices()
 	s.Start()
 
-	s.stdoutlogger.Println("gasfeeService starting:", conf)
+	s.stdoutlogger.Printf("gasfeeService starting: %+v\n", conf)
 
 	return s, nil
 }
