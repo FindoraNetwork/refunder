@@ -30,20 +30,24 @@ func main() {
 		log.Fatalf("readConfig failed: %v", err)
 	}
 
-	giveawaySvc, err := giveaway.New(client.New(config.Server), config.GiveawayService)
-	if err != nil {
-		log.Fatalf("giveaway new service failed :%v, config :%v", err, config.GiveawayService)
+	if config.GiveawayService.IsEnable {
+		giveawaySvc, err := giveaway.New(client.New(config.Server), config.GiveawayService)
+		if err != nil {
+			log.Fatalf("giveaway new service failed :%v, config :%v", err, config.GiveawayService)
+		}
+		defer giveawaySvc.Close()
 	}
 
-	gasfeeSvc, err := gasfee.New(client.New(config.Server), config.GasfeeService)
-	if err != nil {
-		log.Fatalf("gasfee new service failed :%v, config :%v", err, config.GasfeeService)
+	if config.config.GasfeeService.IsEnable {
+		gasfeeSvc, err := gasfee.New(client.New(config.Server), config.GasfeeService)
+		if err != nil {
+			log.Fatalf("gasfee new service failed :%v, config :%v", err, config.GasfeeService)
+		}
+		defer gasfeeSvc.Close()
 	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	<-c
-	giveawaySvc.Close()
-	gasfeeSvc.Close()
 }

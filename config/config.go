@@ -28,6 +28,8 @@ type Server struct {
 }
 
 type GasfeeService struct {
+	// IsEnable is a switch to enable this service or not
+	IsEnable bool `json:"is_enable"`
 	// PrivateKey for the founding source
 	PrivateKey string `json:"private_key"`
 	// CrawleInEveryMinutes specific a time period to crawle the gate.io information
@@ -93,6 +95,8 @@ type CrawlingMate struct {
 }
 
 type GiveawayService struct {
+	// IsEnable is a switch to enable this service or not
+	IsEnable bool `json:"is_enable"`
 	// PrivateKey for the founding source
 	PrivateKey string `json:"private_key"`
 	// HandlerTotalTimeoutSec is the timeout second for all operations in the handle function
