@@ -38,7 +38,7 @@ func main() {
 		defer giveawaySvc.Close()
 	}
 
-	if config.config.GasfeeService.IsEnable {
+	if config.GasfeeService.IsEnable {
 		gasfeeSvc, err := gasfee.New(client.New(config.Server), config.GasfeeService)
 		if err != nil {
 			log.Fatalf("gasfee new service failed :%v, config :%v", err, config.GasfeeService)
