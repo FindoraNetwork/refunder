@@ -10,4 +10,4 @@
         1. get bnb/usdt, fra/usdt, btc/usdt, eth/usdt price from [gate.io](http://gate.io/) regularly (every 10 mins)
         2. every 24 hours get transfer to address value more than 50 usd
         3. send him XXX * price(bnb/usdt) / price(fra/usdt) FRA
-        4. XXX = 12000000000000000 wei or a fixed wei
+        4. XXX = 1200000000000000 wei or a fixed wei
