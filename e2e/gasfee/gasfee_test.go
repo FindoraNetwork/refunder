@@ -136,6 +136,10 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
 	tmpCurBlock, err := ioutil.TempFile("", "gasfee_e2e_current_block_file_*")
 	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
+	tmpRefundedList, err := ioutil.TempFile("", "gasfee_e2e_refunded_list_file_*")
+	s.Require().NoErrorf(err, "ioutil.TempFile:%v", err)
+	err = ioutil.WriteFile(tmpRefundedList.Name(), []byte("[]"), os.ModeType)
+	s.Require().NoErrorf(err, "ioutil.WriteFile:%v", err)
 
 	baseRate := big.NewFloat((0.00053251 * 0.5) * 1000000000000000000)
 
@@ -156,6 +160,7 @@ func (s *gasfeeTestSuite) setupSuiteStartService() {
 			RefundMaxCapWei:            big.NewInt(14589226245), // 0.000000014589226245 wei
 			CrawlingAddress:            s.gateIOServer.URL,
 			RefundedWeiFilepath:        tmpRefunded.Name(),
+			RefundedListFilepath:       tmpRefundedList.Name(),
 			CurrentBlockNumberFilepath: tmpCurBlock.Name(),
 			Numerator:                  config.CurrencyPair("DEMO_USDT"),
 			Denominator:                config.CurrencyPair("FRA_USDT"),
@@ -236,7 +241,15 @@ func (s *gasfeeTestSuite) Test_E2E_Gasfee() {
 			wantBalance: big.NewInt(0),
 			mint:        mint3tokens,
 		},
+		{
+			name:        "block by duplicated refunding",
+			wantBalance: big.NewInt(0),
+			mint:        mint3tokens,
+		},
 	}
+
+	// adding the first successed one to do the duplicated refunding test
+	s.toAddrs = append(s.toAddrs, s.toAddrs[0])
 
 	// let the crawler scrapes at least once
 	time.Sleep(time.Minute)

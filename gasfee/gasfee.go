@@ -43,6 +43,7 @@ type Service struct {
 	refundThreshold        *big.Float
 	refundMaxCapWei        *big.Int
 	refundedWeiFilepath    string
+	refundedListFilepath   string
 	prices                 *prices
 	crawlingAddr           string
 	numerator              common.Address
@@ -121,6 +122,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		blockInterval:          conf.RefunderScrapBlockStep,
 		refundMaxCapWei:        conf.RefundMaxCapWei,
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
+		refundedListFilepath:   conf.RefundedListFilepath,
 		baseRate:               conf.RefundBaseRateWei,
 	}
 
@@ -259,6 +261,7 @@ func (s *Service) Close() {
 }
 
 var ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
+var ErrAlreadyRefunded = errors.New("address has been refunded already")
 
 func (s *Service) refunder() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.refunderTimeout)
@@ -269,6 +272,21 @@ func (s *Service) refunder() error {
 		return fmt.Errorf("refunder client.DialRPC failed:%w", err)
 	}
 
+	refundedListB, err := ioutil.ReadFile(s.refundedListFilepath)
+	if err != nil {
+		return fmt.Errorf("refunder read file:%q failed:%w", s.refundedListFilepath, err)
+	}
+
+	var refundedList []string
+	if err := json.Unmarshal(refundedListB, &refundedList); err != nil {
+		return fmt.Errorf("refunder json unmarshal refunded list failed:%w", err)
+	}
+
+	refundedMap := map[string]struct{}{}
+	for _, addr := range refundedList {
+		refundedMap[addr] = struct{}{}
+	}
+
 	handing := func(log *types.Log) error {
 		if len(log.Topics) != 3 {
 			return fmt.Errorf("refunder receive not expecting format on topics:%v, tx_hash:%s", log.Topics, log.TxHash)
@@ -276,6 +294,11 @@ func (s *Service) refunder() error {
 
 		value := big.NewFloat(0.0).SetInt(common.BytesToHash(log.Data).Big())
 		toAddr := common.BytesToAddress(common.TrimLeftZeroes(log.Topics[2].Bytes()))
+		if _, exists := refundedMap[toAddr.String()]; exists {
+			s.stdoutlogger.Printf("to_address:%s already refunded", toAddr)
+			return ErrAlreadyRefunded
+		}
+
 		mate, ok := s.mapper[log.Address]
 		if !ok {
 			return fmt.Errorf("refunder cannot find decimal from token_address:%s, tx_hash:%s", log.Address, log.TxHash)
@@ -299,6 +322,7 @@ func (s *Service) refunder() error {
 		)
 
 		if transferedPrice.Cmp(s.refundThreshold) <= 0 || refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
+			s.stdoutlogger.Printf("to_address:%s not passing the threshold", toAddr)
 			return ErrNotOverThreshold
 		}
 
@@ -352,6 +376,7 @@ func (s *Service) refunder() error {
 			toAddr, log.TxHash, log.Address, tx.Hash(), refundValue, refundedWei,
 		)
 
+		refundedList = append(refundedList, toAddr.String())
 		return nil
 	}
 
@@ -378,8 +403,8 @@ func (s *Service) refunder() error {
 		}
 		s.filterQuery.ToBlock = big.NewInt(0).SetUint64(curBlockNumber)
 		// avoiding the next fromBlock repeat with the current toBlock
-		curBlockNumber += 1
-		n += 1
+		curBlockNumber++
+		n++
 
 		logs, err := c.FilterLogs(ctx, s.filterQuery)
 		if err != nil {
@@ -389,7 +414,12 @@ func (s *Service) refunder() error {
 
 		for _, log := range logs {
 			if err := handing(&log); err != nil {
-				errs = append(errs, err.Error())
+				switch err {
+				case ErrAlreadyRefunded, ErrNotOverThreshold:
+					// skip those two cases
+				default:
+					errs = append(errs, err.Error())
+				}
 			}
 		}
 	}
@@ -399,6 +429,15 @@ func (s *Service) refunder() error {
 	binary.PutUvarint(curBlockNumB, curBlockNum)
 	if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
 		return fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
+	}
+
+	refundedListB, err = json.Marshal(refundedList)
+	if err != nil {
+		return fmt.Errorf("refunder json marshal refunded list failed:%w", err)
+	}
+
+	if err := ioutil.WriteFile(s.refundedListFilepath, refundedListB, os.ModeType); err != nil {
+		return fmt.Errorf("refunder write file:%q failed:%w", s.refundedListFilepath, err)
 	}
 
 	if errs != nil {
