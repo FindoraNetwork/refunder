@@ -55,6 +55,8 @@ type GasfeeService struct {
 	RefundBaseRateWei *big.Float `json:"refund_base_rate_wei"`
 	// RefundedWeiFilepath stores the current refunded wei information
 	RefundedWeiFilepath string `json:"refunded_wei_filepath"`
+	// RefundedListFilepath stores the refunded addresses as a json array format to avoid multiple refunding
+	RefundedListFilepath string `json:"refunded_list_filepath"`
 	// Numerator is the target network name of the price pair
 	Numerator CurrencyPair `json:"numerator"`
 	// Denominator is the FRA network name of the price pair
