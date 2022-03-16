@@ -426,7 +426,7 @@ func (s *Service) refunder() error {
 	}
 
 	curBlockNum += blockNumberDiff
-	curBlockNumB = make([]byte, 3, binary.MaxVarintLen64)
+	curBlockNumB = make([]byte, binary.MaxVarintLen64)
 	binary.PutUvarint(curBlockNumB, curBlockNum)
 	if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
 		return fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
