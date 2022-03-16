@@ -377,6 +377,7 @@ func (s *Service) refunder() error {
 		)
 
 		refundedList = append(refundedList, toAddr.String())
+		refundedMap[toAddr.String()] = struct{}{}
 		return nil
 	}
 
