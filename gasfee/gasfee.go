@@ -260,8 +260,10 @@ func (s *Service) Close() {
 	close(s.done)
 }
 
-var ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
-var ErrAlreadyRefunded = errors.New("address has been refunded already")
+var (
+	ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
+	ErrAlreadyRefunded  = errors.New("address has been refunded already")
+)
 
 func (s *Service) refunder() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.refunderTimeout)
@@ -491,7 +493,7 @@ func (s *Service) crawler() error {
 			return fmt.Errorf("crawler json decode failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
-		if len(data) == 0 || len(data[0]) != 6 {
+		if len(data) == 0 || len(data[0]) < 5 {
 			return fmt.Errorf("crawler http response not correct:%v, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
