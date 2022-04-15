@@ -53,11 +53,10 @@ type GasfeeService struct {
 	// RefundMaxCapWei is the total maximum incentive amount in wei
 	// Like 20000 FRA = 20000000000000000000000 wei
 	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
-	// RefundWithDynamicGasPrice is the XXX form 2 it will be calculated like
-	// RefundBaseRateWei * current GasPrice in wei
-	RefundWithDynamicGasPrice bool `json:"refund_with_dynamic_gas_price"`
 	// RefundDynamicGasPriceLimit is the limitation of maximum gas price when RefundWithDynamicGasPrice is true
-	RefundDynamicGasPriceLimit *big.Float
+	// this is also decided to use the XXX form 2 or not, it will be calculated like
+	// RefundBaseRateWei * current GasPrice in wei
+	RefundDynamicGasPriceLimit *big.Float `json:"refund_dynamic_gas_price_limit"`
 	// RefundBaseRateWei is the base rate XXX form 1 from the readme in wei if RefundWithDynamicGasPrice == false
 	RefundBaseRateWei *big.Float `json:"refund_base_rate_wei"`
 	// RefundedWeiFilepath stores the current refunded wei information

@@ -95,11 +95,6 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		}
 	}
 
-	var dynGasPriceMax *big.Float
-	if conf.RefundWithDynamicGasPrice {
-		dynGasPriceMax = conf.RefundDynamicGasPriceLimit
-	}
-
 	s := &Service{
 		client:       c,
 		privateKey:   privateKey,
@@ -130,7 +125,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
 		refundedListFilepath:   conf.RefundedListFilepath,
 		baseRate:               conf.RefundBaseRateWei,
-		dynGasPriceMax:         dynGasPriceMax,
+		dynGasPriceMax:         conf.RefundDynamicGasPriceLimit,
 	}
 
 	s.resetPrices()
