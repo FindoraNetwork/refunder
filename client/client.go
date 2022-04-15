@@ -23,6 +23,7 @@ type Client interface {
 	NetworkID(context.Context) (*big.Int, error)
 	Close()
 	BlockNumber(context.Context) (uint64, error)
+	DynamicGasPrice(ctx context.Context) (*big.Int, error)
 	ethereum.LogFilterer
 	ethereum.TransactionSender
 	ethereum.TransactionReader
@@ -47,6 +48,22 @@ func New(config *config.Server) Client {
 		retryTimes:  3,
 		retryPeriod: time.Microsecond,
 	}
+}
+
+// DynamicGasPrice calls the SuggestGasPrice to the DynamicGasPriceRPCAddress
+func (c *client) DynamicGasPrice(ctx context.Context) (v *big.Int, err error) {
+	dc, err := ethclient.DialContext(ctx, c.config.DynamicGasPriceRPCAddress)
+	if err != nil {
+		return nil, fmt.Errorf("DynamicGasPrice ethclient.Dial failed:%w, config:%v", err, c.config)
+	}
+	for i := 0; i < c.retryTimes; i++ {
+		v, err = dc.SuggestGasPrice(ctx)
+		if err == nil {
+			return v, nil
+		}
+		time.Sleep(c.retryPeriod)
+	}
+	return
 }
 
 // DialRPC calls the ethclient.DialContext directly with http address

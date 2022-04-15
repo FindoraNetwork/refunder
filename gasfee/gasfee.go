@@ -51,6 +51,7 @@ type Service struct {
 	mapper                 map[common.Address]*crawlingMate
 	blockInterval          int
 	baseRate               *big.Float
+	dynGasPriceMax         *big.Float
 }
 
 type crawlingMate struct {
@@ -94,6 +95,11 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		}
 	}
 
+	var dynGasPriceMax *big.Float
+	if conf.RefundWithDynamicGasPrice {
+		dynGasPriceMax = conf.RefundDynamicGasPriceLimit
+	}
+
 	s := &Service{
 		client:       c,
 		privateKey:   privateKey,
@@ -124,6 +130,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
 		refundedListFilepath:   conf.RefundedListFilepath,
 		baseRate:               conf.RefundBaseRateWei,
+		dynGasPriceMax:         dynGasPriceMax,
 	}
 
 	s.resetPrices()
@@ -289,7 +296,7 @@ func (s *Service) refunder() error {
 		refundedMap[addr] = struct{}{}
 	}
 
-	handing := func(log *types.Log) error {
+	handing := func(log *types.Log, dynGasPrice *big.Float) error {
 		if len(log.Topics) != 3 {
 			return fmt.Errorf("refunder receive not expecting format on topics:%v, tx_hash:%s", log.Topics, log.TxHash)
 		}
@@ -344,7 +351,14 @@ func (s *Service) refunder() error {
 		}
 
 		fluctuation := big.NewFloat(0).Quo(numerator, denominator)
-		refundValue, _ := big.NewFloat(0).Mul(s.baseRate, fluctuation).Int(nil)
+		var baseRate *big.Float
+		if dynGasPrice != nil {
+			baseRate = big.NewFloat(0).Mul(dynGasPrice, s.baseRate)
+		} else {
+			baseRate = big.NewFloat(0).Add(big.NewFloat(0), s.baseRate)
+		}
+
+		refundValue, _ := big.NewFloat(0).Mul(baseRate, fluctuation).Int(nil)
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,
@@ -396,8 +410,20 @@ func (s *Service) refunder() error {
 
 	blockNumberDiff := latestBlockNumber - curBlockNum
 	curBlockNumber := curBlockNum
-	var errs []string
 
+	var dynGasprice *big.Float
+	if s.dynGasPriceMax != nil {
+		p, err := s.client.DynamicGasPrice(ctx)
+		if err != nil {
+			return fmt.Errorf("refunder get DynamicGasPrice failed:%w", err)
+		}
+		dynGasprice = big.NewFloat(0).SetInt(p)
+		if dynGasprice.Cmp(s.dynGasPriceMax) > 1 {
+			dynGasprice = big.NewFloat(0).Set(s.dynGasPriceMax)
+		}
+	}
+
+	var errs []string
 	for n := 0; n < int(blockNumberDiff); n += s.blockInterval {
 		s.filterQuery.FromBlock = big.NewInt(0).SetUint64(curBlockNumber)
 		curBlockNumber += uint64(s.blockInterval)
@@ -416,7 +442,7 @@ func (s *Service) refunder() error {
 		}
 
 		for _, log := range logs {
-			if err := handing(&log); err != nil {
+			if err := handing(&log, dynGasprice); err != nil {
 				switch err {
 				case ErrAlreadyRefunded, ErrNotOverThreshold:
 					// skip those two cases
