@@ -131,6 +131,19 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 	s.resetPrices()
 	s.Start()
 
+	curBlockNumB, err := ioutil.ReadFile(s.curBlockNumberFilepath)
+	if err != nil {
+		return nil, fmt.Errorf("refunder read file:%q failed:%w", s.curBlockNumberFilepath, err)
+	}
+	curBlockNum, _ := binary.Uvarint(curBlockNumB)
+	if conf.RefunderStartBlockNumber > curBlockNum {
+		curBlockNumB = make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(curBlockNumB, curBlockNum)
+		if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
+			return nil, fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
+		}
+	}
+
 	s.stdoutlogger.Printf("gasfeeService starting: %+v\n", conf)
 
 	return s, nil
@@ -405,6 +418,7 @@ func (s *Service) refunder() error {
 
 	blockNumberDiff := latestBlockNumber - curBlockNum
 	curBlockNumber := curBlockNum
+	s.stdoutlogger.Printf("blockFrom:%v, blockTo:%v", curBlockNum, blockNumberDiff)
 
 	var dynGasprice *big.Float
 	if s.dynGasPriceMax != nil {
