@@ -138,7 +138,7 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 	curBlockNum, _ := binary.Uvarint(curBlockNumB)
 	if conf.RefunderStartBlockNumber > curBlockNum {
 		curBlockNumB = make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(curBlockNumB, curBlockNum)
+		binary.PutUvarint(curBlockNumB, conf.RefunderStartBlockNumber)
 		if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
 			return nil, fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
 		}
