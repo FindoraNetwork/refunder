@@ -88,8 +88,10 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		switch currencyPair {
 		case conf.Denominator:
 			denominator = tokenAddr
+			addresses = append(addresses, tokenAddr)
 		case conf.Numerator:
 			numerator = tokenAddr
+			addresses = append(addresses, tokenAddr)
 		default:
 			addresses = append(addresses, tokenAddr)
 		}
@@ -418,7 +420,7 @@ func (s *Service) refunder() error {
 
 	blockNumberDiff := latestBlockNumber - curBlockNum
 	curBlockNumber := curBlockNum
-	s.stdoutlogger.Printf("blockFrom:%v, blockTo:%v", curBlockNum, blockNumberDiff)
+	s.stdoutlogger.Printf("blockFrom:%v, blockNumberDiff:%v", curBlockNum, blockNumberDiff)
 
 	var dynGasprice *big.Float
 	if s.dynGasPriceMax != nil {
