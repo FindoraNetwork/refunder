@@ -336,8 +336,8 @@ func (s *Service) refunder() error {
 		transferedToken := value.Quo(value, big.NewFloat(math.Pow10(mate.decimal)))
 		transferedPrice := transferedToken.Mul(transferedToken, toPrice)
 
-		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, (numerator:%v / denominator:%v), target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s`,
-			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, numerator, denominator, toPrice, refundedWei, s.refundMaxCapWei,
+		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, (numerator:%v / denominator:%v), target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s, dynamic_gas_price:%v`,
+			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, numerator, denominator, toPrice, refundedWei, s.refundMaxCapWei, dynGasPrice,
 		)
 
 		if transferedPrice.Cmp(s.refundThreshold) <= 0 || refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
