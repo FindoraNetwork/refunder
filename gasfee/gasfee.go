@@ -51,7 +51,8 @@ type Service struct {
 	mapper                 map[common.Address]*crawlingMate
 	blockInterval          int
 	baseRate               *big.Float
-	dynGasPriceMax         *big.Float
+	isDynGasPrice          bool
+	refundMaxUsdt          *big.Float
 }
 
 type crawlingMate struct {
@@ -127,7 +128,8 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
 		refundedListFilepath:   conf.RefundedListFilepath,
 		baseRate:               conf.RefundBaseRateWei,
-		dynGasPriceMax:         conf.RefundDynamicGasPriceLimit,
+		isDynGasPrice:          conf.IsUsingDynamicGasPrice,
+		refundMaxUsdt:          conf.RefundMaxUsdtEach,
 	}
 
 	s.resetPrices()
@@ -368,7 +370,14 @@ func (s *Service) refunder() error {
 			baseRate = big.NewFloat(0).Add(big.NewFloat(0), s.baseRate)
 		}
 
+		refundValueF := big.NewFloat(0).Mul(baseRate, fluctuation)
+		refundValueUSDT := big.NewFloat(0).Mul(refundValueF.Quo(refundValueF, big.NewFloat(math.Pow10(int(s.mapper[s.denominator].decimal)))), denominator)
 		refundValue, _ := big.NewFloat(0).Mul(baseRate, fluctuation).Int(nil)
+		if refundValueUSDT.Cmp(s.refundMaxUsdt) > 1 {
+			maxFra := big.NewFloat(0).Quo(s.refundMaxUsdt, denominator)
+			refundValue, _ = maxFra.Mul(maxFra, big.NewFloat(math.Pow10(int(s.mapper[s.denominator].decimal)))).Int(nil)
+		}
+
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,
@@ -423,15 +432,12 @@ func (s *Service) refunder() error {
 	s.stdoutlogger.Printf("blockFrom:%v, blockNumberDiff:%v", curBlockNum, blockNumberDiff)
 
 	var dynGasprice *big.Float
-	if s.dynGasPriceMax != nil {
+	if s.isDynGasPrice {
 		p, err := s.client.DynamicGasPrice(ctx)
 		if err != nil {
 			return fmt.Errorf("refunder get DynamicGasPrice failed:%w", err)
 		}
 		dynGasprice = big.NewFloat(0).SetInt(p)
-		if dynGasprice.Cmp(s.dynGasPriceMax) > 1 {
-			dynGasprice = big.NewFloat(0).Set(s.dynGasPriceMax)
-		}
 	}
 
 	var errs []string
