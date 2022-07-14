@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"time"
 )
 
@@ -33,7 +34,7 @@ type GasfeeService struct {
 	// IsEnable is a switch to enable this service or not
 	IsEnable bool `json:"is_enable"`
 	// PrivateKey for the founding source
-	PrivateKey string `json:"private_key"`
+	PrivateKey string `json:"-"`
 	// CrawleInEveryMinutes specific a time period to crawle the gate.io information
 	CrawleInEveryMinutes uint `json:"crawle_in_every_minutes"`
 	// RefundEveryDayAt specific a time in RFC 3339 format which takes the HH:MM:SS only
@@ -106,7 +107,7 @@ type GiveawayService struct {
 	// IsEnable is a switch to enable this service or not
 	IsEnable bool `json:"is_enable"`
 	// PrivateKey for the founding source
-	PrivateKey string `json:"private_key"`
+	PrivateKey string `json:"-"`
 	// HandlerTotalTimeoutSec is the timeout second for all operations in the handle function
 	HandlerTotalTimeoutSec uint `json:"handler_operations_timeout_sec"`
 	// SubscripTimeoutSec is the timeout second for dialing and subscribing to the server
@@ -125,7 +126,13 @@ type GiveawayService struct {
 	CurrentGaveWeiFilepath string `json:"current_gave_wei_filepath"`
 }
 
+const (
+	envGiveawayServicePrivateKey = "GIVEAWAY_SERVICE_PK"
+	envGasfeeServicePrivateKey   = "GASFEE_SERVICE_PK"
+)
+
 // Load simply loading the config from a json file which is specificed
+// and read the private keys from the env
 func Load(cmd, filepath string) (*Config, error) {
 	if cmd != "--config" {
 		return nil, errors.New("config expecting a command --config along with the config filepath")
@@ -140,6 +147,9 @@ func Load(cmd, filepath string) (*Config, error) {
 	if err := json.Unmarshal(b, c); err != nil {
 		return nil, fmt.Errorf("config json unmarshal failed: %w", err)
 	}
+
+	c.GiveawayService.PrivateKey = os.Getenv(envGiveawayServicePrivateKey)
+	c.GasfeeService.PrivateKey = os.Getenv(envGasfeeServicePrivateKey)
 
 	return c, nil
 }
