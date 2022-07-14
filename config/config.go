@@ -148,8 +148,13 @@ func Load(cmd, filepath string) (*Config, error) {
 		return nil, fmt.Errorf("config json unmarshal failed: %w", err)
 	}
 
-	c.GiveawayService.PrivateKey = os.Getenv(envGiveawayServicePrivateKey)
-	c.GasfeeService.PrivateKey = os.Getenv(envGasfeeServicePrivateKey)
+	if c.GiveawayService != nil {
+		c.GiveawayService.PrivateKey = os.Getenv(envGiveawayServicePrivateKey)
+	}
+
+	if c.GasfeeService != nil {
+		c.GasfeeService.PrivateKey = os.Getenv(envGasfeeServicePrivateKey)
+	}
 
 	return c, nil
 }
