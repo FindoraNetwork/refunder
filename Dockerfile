@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/golang:1.17.7-alpine AS builder
+FROM --platform=$TARGETPLATFORM docker.io/golang:1.18.4-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum .
