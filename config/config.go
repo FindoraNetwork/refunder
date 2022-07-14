@@ -25,6 +25,8 @@ type Server struct {
 	ServerWSAddresses []string `json:"server_ws_addresses"`
 	// the http server addresses with port number
 	ServerRPCAddresses []string `json:"server_rpc_addresses"`
+	// while RefundWithDynamicGasPrice in GasfeeService is true, this is a MUST filled field
+	DynamicGasPriceRPCAddress string `json:"dynamic_gas_price_rpc_address"`
 }
 
 type GasfeeService struct {
@@ -51,7 +53,11 @@ type GasfeeService struct {
 	// RefundMaxCapWei is the total maximum incentive amount in wei
 	// Like 20000 FRA = 20000000000000000000000 wei
 	RefundMaxCapWei *big.Int `json:"refund_max_cap_wei"`
-	// RefundBaseRateWei is the base rate XXX from the readme in wei
+	// IsUsingDynamicGasPrice enables the usage of XXX form 2
+	IsUsingDynamicGasPrice bool `json:"is_using_dynamic_gas_price"`
+	// RefundMaxUsdtEach limits each refunding FRA token should not be over the specific USDT price
+	RefundMaxUsdtEach *big.Float `json:"refund_max_usdt_each"`
+	// RefundBaseRateWei is the base rate XXX form 1 from the readme in wei if IsUsingDynamicGasPrice == false
 	RefundBaseRateWei *big.Float `json:"refund_base_rate_wei"`
 	// RefundedWeiFilepath stores the current refunded wei information
 	RefundedWeiFilepath string `json:"refunded_wei_filepath"`

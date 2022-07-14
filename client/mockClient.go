@@ -14,6 +14,10 @@ type MockClient struct {
 	Client *backends.SimulatedBackend
 }
 
+func (c *MockClient) DynamicGasPrice(ctx context.Context) (*big.Int, error) {
+	return nil, nil
+}
+
 func (c *MockClient) DialRPC() (Client, error) {
 	return c, nil
 }

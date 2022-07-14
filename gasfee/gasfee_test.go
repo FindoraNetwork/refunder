@@ -1,7 +1,9 @@
 package gasfee_test
 
 import (
+	"encoding/binary"
 	"encoding/hex"
+	"io/ioutil"
 	"math/big"
 	"testing"
 	"time"
@@ -45,15 +47,28 @@ func setup(t *testing.T) (client.Client, string) {
 }
 
 func Test_GasfeeService(t *testing.T) {
+	tmpCurBlock, err := ioutil.TempFile("", "gasfee_e2e_current_block_file_*")
+	assert.NoErrorf(t, err, "ioutil.TempFile:%v", err)
+
+	wantBlockNum := uint64(1000)
+
 	client, privateKey := setup(t)
 	service, err := gasfee.New(client, &config.GasfeeService{
-		PrivateKey:              privateKey,
-		CrawleInEveryMinutes:    3,
-		RefundEveryDayAt:        time.Now().UTC().Add(3 * time.Second),
-		RefunderTotalTimeoutSec: 3,
-		CrawlerTotalTimeoutSec:  3,
-		RefundThreshold:         big.NewFloat(3),
+		PrivateKey:                 privateKey,
+		CrawleInEveryMinutes:       3,
+		RefundEveryDayAt:           time.Now().UTC().Add(3 * time.Second),
+		RefunderTotalTimeoutSec:    3,
+		CrawlerTotalTimeoutSec:     3,
+		RefundThreshold:            big.NewFloat(3),
+		RefunderStartBlockNumber:   wantBlockNum,
+		CurrentBlockNumberFilepath: tmpCurBlock.Name(),
 	})
 	assert.NoError(t, err)
 	service.Close()
+
+	curBlockNumB, err := ioutil.ReadFile(tmpCurBlock.Name())
+	assert.NoError(t, err)
+
+	gotBlockNum, _ := binary.Uvarint(curBlockNumB)
+	assert.Equal(t, wantBlockNum, gotBlockNum)
 }

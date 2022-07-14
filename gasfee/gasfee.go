@@ -51,6 +51,8 @@ type Service struct {
 	mapper                 map[common.Address]*crawlingMate
 	blockInterval          int
 	baseRate               *big.Float
+	isDynGasPrice          bool
+	refundMaxUsdt          *big.Float
 }
 
 type crawlingMate struct {
@@ -87,8 +89,10 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		switch currencyPair {
 		case conf.Denominator:
 			denominator = tokenAddr
+			addresses = append(addresses, tokenAddr)
 		case conf.Numerator:
 			numerator = tokenAddr
+			addresses = append(addresses, tokenAddr)
 		default:
 			addresses = append(addresses, tokenAddr)
 		}
@@ -124,10 +128,25 @@ func New(c client.Client, conf *config.GasfeeService) (*Service, error) {
 		refundedWeiFilepath:    conf.RefundedWeiFilepath,
 		refundedListFilepath:   conf.RefundedListFilepath,
 		baseRate:               conf.RefundBaseRateWei,
+		isDynGasPrice:          conf.IsUsingDynamicGasPrice,
+		refundMaxUsdt:          conf.RefundMaxUsdtEach,
 	}
 
 	s.resetPrices()
 	s.Start()
+
+	curBlockNumB, err := ioutil.ReadFile(s.curBlockNumberFilepath)
+	if err != nil {
+		return nil, fmt.Errorf("refunder read file:%q failed:%w", s.curBlockNumberFilepath, err)
+	}
+	curBlockNum, _ := binary.Uvarint(curBlockNumB)
+	if conf.RefunderStartBlockNumber > curBlockNum {
+		curBlockNumB = make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(curBlockNumB, conf.RefunderStartBlockNumber)
+		if err := ioutil.WriteFile(s.curBlockNumberFilepath, curBlockNumB, os.ModeType); err != nil {
+			return nil, fmt.Errorf("refunder write file:%q failed:%w", s.curBlockNumberFilepath, err)
+		}
+	}
 
 	s.stdoutlogger.Printf("gasfeeService starting: %+v\n", conf)
 
@@ -260,8 +279,10 @@ func (s *Service) Close() {
 	close(s.done)
 }
 
-var ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
-var ErrAlreadyRefunded = errors.New("address has been refunded already")
+var (
+	ErrNotOverThreshold = errors.New("transaction value is not over the threshold")
+	ErrAlreadyRefunded  = errors.New("address has been refunded already")
+)
 
 func (s *Service) refunder() error {
 	ctx, cancel := context.WithTimeout(context.Background(), s.refunderTimeout)
@@ -287,7 +308,7 @@ func (s *Service) refunder() error {
 		refundedMap[addr] = struct{}{}
 	}
 
-	handing := func(log *types.Log) error {
+	handing := func(log *types.Log, dynGasPrice *big.Float) error {
 		if len(log.Topics) != 3 {
 			return fmt.Errorf("refunder receive not expecting format on topics:%v, tx_hash:%s", log.Topics, log.TxHash)
 		}
@@ -317,8 +338,8 @@ func (s *Service) refunder() error {
 		transferedToken := value.Quo(value, big.NewFloat(math.Pow10(mate.decimal)))
 		transferedPrice := transferedToken.Mul(transferedToken, toPrice)
 
-		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, (numerator:%v / denominator:%v), target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s`,
-			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, numerator, denominator, toPrice, refundedWei, s.refundMaxCapWei,
+		s.stdoutlogger.Printf(`refunder handling, to_address:%s, value:%v, threshold:%v, tx_hash:%s, token_address:%s, decimal:%d, (numerator:%v / denominator:%v), target_price:%v, refunded_wei:%s, refund_max_cap_wei:%s, dynamic_gas_price:%v`,
+			toAddr, value, s.refundThreshold, log.TxHash, log.Address, mate.decimal, numerator, denominator, toPrice, refundedWei, s.refundMaxCapWei, dynGasPrice,
 		)
 
 		if transferedPrice.Cmp(s.refundThreshold) <= 0 || refundedWei.Cmp(s.refundMaxCapWei) >= 0 {
@@ -342,7 +363,21 @@ func (s *Service) refunder() error {
 		}
 
 		fluctuation := big.NewFloat(0).Quo(numerator, denominator)
-		refundValue, _ := big.NewFloat(0).Mul(s.baseRate, fluctuation).Int(nil)
+		var baseRate *big.Float
+		if dynGasPrice != nil {
+			baseRate = big.NewFloat(0).Mul(dynGasPrice, s.baseRate)
+		} else {
+			baseRate = big.NewFloat(0).Add(big.NewFloat(0), s.baseRate)
+		}
+
+		refundValueF := big.NewFloat(0).Mul(baseRate, fluctuation)
+		refundValueUSDT := big.NewFloat(0).Mul(refundValueF.Quo(refundValueF, big.NewFloat(math.Pow10(int(s.mapper[s.denominator].decimal)))), denominator)
+		refundValue, _ := big.NewFloat(0).Mul(baseRate, fluctuation).Int(nil)
+		if refundValueUSDT.Cmp(s.refundMaxUsdt) > 1 {
+			maxFra := big.NewFloat(0).Quo(s.refundMaxUsdt, denominator)
+			refundValue, _ = maxFra.Mul(maxFra, big.NewFloat(math.Pow10(int(s.mapper[s.denominator].decimal)))).Int(nil)
+		}
+
 		tx, err := types.SignTx(
 			types.NewTx(&types.LegacyTx{
 				Nonce: nonce,
@@ -394,8 +429,18 @@ func (s *Service) refunder() error {
 
 	blockNumberDiff := latestBlockNumber - curBlockNum
 	curBlockNumber := curBlockNum
-	var errs []string
+	s.stdoutlogger.Printf("blockFrom:%v, blockNumberDiff:%v", curBlockNum, blockNumberDiff)
 
+	var dynGasprice *big.Float
+	if s.isDynGasPrice {
+		p, err := s.client.DynamicGasPrice(ctx)
+		if err != nil {
+			return fmt.Errorf("refunder get DynamicGasPrice failed:%w", err)
+		}
+		dynGasprice = big.NewFloat(0).SetInt(p)
+	}
+
+	var errs []string
 	for n := 0; n < int(blockNumberDiff); n += s.blockInterval {
 		s.filterQuery.FromBlock = big.NewInt(0).SetUint64(curBlockNumber)
 		curBlockNumber += uint64(s.blockInterval)
@@ -414,7 +459,7 @@ func (s *Service) refunder() error {
 		}
 
 		for _, log := range logs {
-			if err := handing(&log); err != nil {
+			if err := handing(&log, dynGasprice); err != nil {
 				switch err {
 				case ErrAlreadyRefunded, ErrNotOverThreshold:
 					// skip those two cases
@@ -491,7 +536,7 @@ func (s *Service) crawler() error {
 			return fmt.Errorf("crawler json decode failed:%w, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
-		if len(data) == 0 || len(data[0]) != 6 {
+		if len(data) == 0 || len(data[0]) < 5 {
 			return fmt.Errorf("crawler http response not correct:%v, currency_pair:%s, token_address:%s", err, mate.currencyPair, tokenAddr)
 		}
 
