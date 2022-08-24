@@ -3,7 +3,7 @@ module github.com/FindoraNetwork/refunder
 go 1.17
 
 require (
-	github.com/ethereum/go-ethereum v1.10.20
+	github.com/ethereum/go-ethereum v1.10.23
 	github.com/gorilla/websocket v1.5.0
 	github.com/stretchr/testify v1.7.2
 )
